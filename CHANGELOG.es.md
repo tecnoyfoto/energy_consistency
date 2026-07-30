@@ -4,7 +4,7 @@ Este archivo documenta los cambios destacados de Energy Consistency.
 
 ## [0.7.2] - 2026-07-30
 
-Primera versión preliminar pública.
+Primera versión pública.
 
 ### Añadido
 

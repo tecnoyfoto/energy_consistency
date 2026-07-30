@@ -1,0 +1,11 @@
+{
+  "name": "Energy Consistency",
+  "content_in_root": false,
+  "domains": ["energy_consistency"],
+  "homeassistant": "2026.7.0",
+  "render_readme": true,
+  "zip_release": false,
+  "changelog": "https://github.com/tecnoyfoto/energy_consistency/releases/tag/{version}",
+  "issues": "https://github.com/tecnoyfoto/energy_consistency/issues",
+  "authors": ["Tecnoyfoto"]
+}

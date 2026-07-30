@@ -1,0 +1,84 @@
+{
+  "title": "Energy Consistency",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure daily energy comparison",
+        "description": "Select an official daily energy sensor, the entity containing the date represented by that value, and a cumulative local energy sensor.",
+        "data": {
+          "name": "Name",
+          "official_energy_entity": "Official daily energy",
+          "official_date_entity": "Date of the official reading",
+          "local_energy_entity": "Local cumulative energy"
+        },
+        "data_description": {
+          "official_energy_entity": "Energy consumed on the latest complete day reported by the distributor.",
+          "official_date_entity": "Entity whose state contains the date or timestamp represented by the official value.",
+          "local_energy_entity": "Total or total-increasing energy entity recorded by Home Assistant."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure daily energy comparison",
+        "description": "Change the display name or source entities. Changing a source starts a new comparison history.",
+        "data": {
+          "name": "Name",
+          "official_energy_entity": "Official daily energy",
+          "official_date_entity": "Date of the official reading",
+          "local_energy_entity": "Local cumulative energy"
+        },
+        "data_description": {
+          "official_energy_entity": "Energy consumed on the latest complete day reported by the official source.",
+          "official_date_entity": "Entity whose state contains the date or timestamp represented by the official value.",
+          "local_energy_entity": "Total or total-increasing energy entity recorded by Home Assistant."
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "One or more selected entities do not exist.",
+      "invalid_date_entity": "This entity does not contain a valid date.",
+      "invalid_energy_entity": "This entity does not have a valid Wh, kWh, or MWh energy value.",
+      "local_must_be_energy": "The local entity must have the energy device class.",
+      "local_must_be_total": "The local entity must have the total or total-increasing state class.",
+      "invalid_name": "Enter a name for this comparison.",
+      "sources_must_differ": "The official and local energy sources must be different entities.",
+      "official_completeness_unavailable": "This official sensor does not expose enough information to verify complete days.",
+      "already_configured": "This comparison is already configured."
+    },
+    "abort": {
+      "already_configured": "This comparison is already configured.",
+      "reconfigure_successful": "The comparison was reconfigured successfully."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Comparison and health thresholds",
+        "description": "Critical status is deliberately conservative and requires repeated complete days.",
+        "data": {
+          "green_abs_kwh": "Green absolute tolerance (kWh)",
+          "green_percent": "Green relative tolerance (%)",
+          "critical_abs_kwh": "Critical absolute threshold (kWh)",
+          "critical_percent": "Critical relative threshold (%)",
+          "learning_days": "Valid learning days",
+          "frozen_hours": "Unchanged sensor timeout (hours)",
+          "max_official_delay_days": "Maximum official delay (days)"
+        }
+      }
+    },
+    "error": {
+      "critical_must_exceed_green": "The critical threshold must be greater than the green tolerance."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {"name": "Status", "state": {"ok": "OK", "learning": "Learning", "waiting": "Waiting for official data", "data_issue": "Data issue", "warning": "Review", "critical": "Critical"}},
+      "official_energy": {"name": "Official energy"},
+      "local_energy": {"name": "Local energy"},
+      "difference": {"name": "Difference"},
+      "difference_percent": {"name": "Difference percentage"},
+      "coverage": {"name": "Local data coverage"},
+      "comparison_date": {"name": "Comparison date"},
+      "official_delay": {"name": "Official data delay"}
+    }
+  }
+}

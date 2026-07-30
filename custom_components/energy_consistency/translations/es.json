@@ -1,0 +1,84 @@
+{
+  "title": "Coherencia energética",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurar la comparación energética diaria",
+        "description": "Selecciona el consumo diario oficial, la entidad que contiene la fecha representada por ese valor y el contador acumulado local.",
+        "data": {
+          "name": "Nombre",
+          "official_energy_entity": "Consumo diario oficial",
+          "official_date_entity": "Fecha de la lectura oficial",
+          "local_energy_entity": "Energía acumulada local"
+        },
+        "data_description": {
+          "official_energy_entity": "Energía consumida durante el último día completo publicado por la distribuidora.",
+          "official_date_entity": "Entidad cuyo estado contiene la fecha o marca temporal representada por el valor oficial.",
+          "local_energy_entity": "Contador de energía total o total creciente registrado por Home Assistant."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar la comparación energética diaria",
+        "description": "Cambia el nombre o las entidades de origen. Al cambiar una fuente se inicia un historial de comparación nuevo.",
+        "data": {
+          "name": "Nombre",
+          "official_energy_entity": "Consumo diario oficial",
+          "official_date_entity": "Fecha de la lectura oficial",
+          "local_energy_entity": "Energía acumulada local"
+        },
+        "data_description": {
+          "official_energy_entity": "Energía consumida durante el último día completo publicado por la fuente oficial.",
+          "official_date_entity": "Entidad cuyo estado contiene la fecha o marca temporal representada por el valor oficial.",
+          "local_energy_entity": "Contador de energía total o total creciente registrado por Home Assistant."
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Una o más entidades seleccionadas no existen.",
+      "invalid_date_entity": "Esta entidad no contiene una fecha válida.",
+      "invalid_energy_entity": "Esta entidad no contiene un valor energético válido en Wh, kWh o MWh.",
+      "local_must_be_energy": "La entidad local debe tener la clase de dispositivo de energía.",
+      "local_must_be_total": "La entidad local debe ser de tipo total o total creciente.",
+      "invalid_name": "Introduce un nombre para esta comparación.",
+      "sources_must_differ": "Las fuentes de energía oficial y local deben ser entidades diferentes.",
+      "official_completeness_unavailable": "Este sensor oficial no proporciona información suficiente para verificar días completos.",
+      "already_configured": "Esta comparación ya está configurada."
+    },
+    "abort": {
+      "already_configured": "Esta comparación ya está configurada.",
+      "reconfigure_successful": "La comparación se ha reconfigurado correctamente."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Márgenes de comparación y salud",
+        "description": "El estado crítico es deliberadamente conservador y exige varios días completos con desviaciones repetidas.",
+        "data": {
+          "green_abs_kwh": "Tolerancia absoluta verde (kWh)",
+          "green_percent": "Tolerancia relativa verde (%)",
+          "critical_abs_kwh": "Umbral absoluto crítico (kWh)",
+          "critical_percent": "Umbral relativo crítico (%)",
+          "learning_days": "Días válidos de aprendizaje",
+          "frozen_hours": "Tiempo sin cambios para detectar congelación (horas)",
+          "max_official_delay_days": "Retraso oficial máximo (días)"
+        }
+      }
+    },
+    "error": {
+      "critical_must_exceed_green": "El umbral crítico debe ser superior a la tolerancia verde."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {"name": "Estado", "state": {"ok": "Correcto", "learning": "Aprendiendo", "waiting": "Esperando datos oficiales", "data_issue": "Problema de datos", "warning": "Revisar", "critical": "Crítico"}},
+      "official_energy": {"name": "Energía oficial"},
+      "local_energy": {"name": "Energía local"},
+      "difference": {"name": "Diferencia"},
+      "difference_percent": {"name": "Diferencia porcentual"},
+      "coverage": {"name": "Cobertura de datos locales"},
+      "comparison_date": {"name": "Fecha de comparación"},
+      "official_delay": {"name": "Retraso de los datos oficiales"}
+    }
+  }
+}

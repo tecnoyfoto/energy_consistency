@@ -4,7 +4,7 @@
   "codeowners": ["@tecnoyfoto"],
   "config_flow": true,
   "after_dependencies": ["edata"],
-  "dependencies": ["frontend", "recorder"],
+  "dependencies": ["frontend", "http", "recorder"],
   "documentation": "https://github.com/tecnoyfoto/energy_consistency",
   "integration_type": "service",
   "iot_class": "local_polling",

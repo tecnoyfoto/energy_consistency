@@ -1,9 +1,9 @@
 {
   "domain": "energy_consistency",
   "name": "Energy Consistency",
+  "after_dependencies": ["edata"],
   "codeowners": ["@tecnoyfoto"],
   "config_flow": true,
-  "after_dependencies": ["edata"],
   "dependencies": ["frontend", "http", "recorder"],
   "documentation": "https://github.com/tecnoyfoto/energy_consistency",
   "integration_type": "service",

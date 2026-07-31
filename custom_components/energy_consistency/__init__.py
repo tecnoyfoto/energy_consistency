@@ -8,6 +8,7 @@ import shutil
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from homeassistant.helpers.storage import Store
@@ -25,6 +26,7 @@ from .frontend import async_register_frontend_resource
 EnergyConsistencyConfigEntry = ConfigEntry[EnergyConsistencyCoordinator]
 
 FRONTEND_URL = "/energy_consistency/energy-consistency-badge.js"
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

@@ -2,6 +2,15 @@
 
 All notable changes to Energy Consistency are documented in this file.
 
+## [0.7.3] - 2026-07-31
+
+### Fixed
+
+- Register the interactive badge as a persistent Lovelace resource so Android
+  remote connections do not depend on a separately cached frontend index.
+- Retain automatic extra-module registration as a fallback for YAML-managed
+  Lovelace resources.
+
 ## [0.7.2] - 2026-07-30
 
 First public release.

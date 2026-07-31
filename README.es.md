@@ -12,7 +12,7 @@ la causa de una diferencia.
 
 ## Estado actual
 
-La versión `0.7.2` es la primera versión preliminar pública. Ya funciona en una
+La versión `0.7.3` es la versión preliminar pública actual. Ya funciona en una
 instalación real de Home Assistant, dispone de pruebas automáticas, conserva el
 historial verificado después de los reinicios y rechaza deliberadamente los
 días parciales.

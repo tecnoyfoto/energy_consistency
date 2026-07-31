@@ -2,6 +2,16 @@
 
 Este archivo documenta los cambios destacados de Energy Consistency.
 
+## [0.7.3] - 2026-07-31
+
+### Corregido
+
+- Registra la insignia interactiva como recurso persistente de Lovelace para
+  que las conexiones remotas de Android no dependan de una caché separada del
+  HTML inicial.
+- Mantiene el registro automático como módulo adicional para las instalaciones
+  que gestionan los recursos de Lovelace mediante YAML.
+
 ## [0.7.2] - 2026-07-30
 
 Primera versión pública.

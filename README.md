@@ -12,7 +12,7 @@ the cause of a discrepancy.
 
 ## Current status
 
-Version `0.7.2` is the first public preview. It is already running in a real
+Version `0.7.3` is the current public preview. It is already running in a real
 Home Assistant installation, includes automated tests, preserves verified
 history across restarts, and deliberately rejects partial days.
 

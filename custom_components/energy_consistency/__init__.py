@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 
-from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -21,6 +20,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .coordinator import EnergyConsistencyCoordinator
+from .frontend import async_register_frontend_resource
 
 EnergyConsistencyConfigEntry = ConfigEntry[EnergyConsistencyCoordinator]
 
@@ -33,7 +33,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(FRONTEND_URL, str(badge_path), cache_headers=True)]
     )
-    add_extra_js_url(hass, f"{FRONTEND_URL}?v={FRONTEND_VERSION}")
+    await async_register_frontend_resource(hass, FRONTEND_URL, FRONTEND_VERSION)
     return True
 
 

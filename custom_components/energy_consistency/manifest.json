@@ -4,11 +4,11 @@
   "after_dependencies": ["edata"],
   "codeowners": ["@tecnoyfoto"],
   "config_flow": true,
-  "dependencies": ["frontend", "http", "recorder"],
+  "dependencies": ["frontend", "http", "lovelace", "recorder"],
   "documentation": "https://github.com/tecnoyfoto/energy_consistency",
   "integration_type": "service",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/tecnoyfoto/energy_consistency/issues",
   "requirements": [],
-  "version": "0.7.2"
+  "version": "0.7.3"
 }

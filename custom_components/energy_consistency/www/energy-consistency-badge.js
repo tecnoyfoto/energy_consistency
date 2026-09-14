@@ -18,6 +18,10 @@ const COPY = {
     local: "Lectura local",
     difference: "Diferencia",
     coverage: "Cobertura local",
+    localSource: "Contador utilizado",
+    primarySource: "Principal",
+    backupSource: "Respaldo",
+    fallbackActive: "Se utilizó el contador de respaldo porque el principal no era fiable.",
     officialHours: "Horas oficiales recibidas",
     pendingOfficialHours: "Horas oficiales pendientes",
     recent: "Comparaciones recientes",
@@ -41,6 +45,7 @@ const COPY = {
     waiting_for_local_statistics: "Recorder todavía no dispone de las estadísticas locales.",
     waiting_for_complete_official_day: "La fuente oficial todavía no ha publicado todas las horas del día.",
     invalid_local_value: "El valor local no es un número de energía válido.",
+    local_sources_disagree: "Los dos contadores locales tienen datos completos pero no coinciden entre sí.",
     cachedResult: "Se mantiene el último resultado verificado del {date} mientras las fuentes terminan de recuperarse.",
     validDays: "días válidos",
     noData: "Sin datos",
@@ -53,6 +58,10 @@ const COPY = {
     local: "Local reading",
     difference: "Difference",
     coverage: "Local coverage",
+    localSource: "Meter used",
+    primarySource: "Primary",
+    backupSource: "Backup",
+    fallbackActive: "The backup meter was used because the primary was not reliable.",
     officialHours: "Official hours received",
     pendingOfficialHours: "Pending official hours",
     recent: "Recent comparisons",
@@ -76,6 +85,7 @@ const COPY = {
     waiting_for_local_statistics: "Recorder does not have the local statistics yet.",
     waiting_for_complete_official_day: "The official source has not published every hour of the day yet.",
     invalid_local_value: "The local value is not a valid energy number.",
+    local_sources_disagree: "Both local meters have complete data but disagree with each other.",
     cachedResult: "Keeping the last verified result from {date} while the sources finish recovering.",
     validDays: "valid days",
     noData: "No data",
@@ -252,6 +262,12 @@ class EnergyConsistencyBadge extends HTMLElement {
       [text.difference, `${difference > 0 ? "+" : ""}${number(detail.difference_kwh)} kWh (${difference > 0 ? "+" : ""}${number(detail.difference_percent, 1)} %)`],
       [text.coverage, `${number(detail.coverage_percent, 1)} %`],
     ];
+    if (detail.local_source_role) {
+      metrics.push([
+        text.localSource,
+        detail.local_source_role === "backup" ? text.backupSource : text.primarySource,
+      ]);
+    }
     if (detail.official_hours != null && detail.expected_official_hours != null) {
       metrics.push([
         text.officialHours,
@@ -277,6 +293,9 @@ class EnergyConsistencyBadge extends HTMLElement {
       : Math.abs(difference) < 0.01
         ? text.equal
         : difference > 0 ? text.localHigher : text.officialHigher;
+    if (detail.fallback_used) {
+      dialog.querySelector(".direction").textContent = `${text.fallbackActive} ${dialog.querySelector(".direction").textContent}`.trim();
+    }
     dialog.querySelector(".recent-title").textContent = `${text.recent} · ${attrs.valid_days || 0} ${text.validDays}`;
     const history = dialog.querySelector(".history");
     history.replaceChildren();

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from datetime import date as date_type
-import math
 from typing import Any
-
 
 _VALID_DAY_STATUSES = {"ok", "warning", "critical", "incomplete"}
 _VALID_DAY_REASONS = {
@@ -15,6 +14,8 @@ _VALID_DAY_REASONS = {
     "large_difference",
     "insufficient_local_coverage",
     "invalid_local_value",
+    "local_sensor_may_be_frozen",
+    "local_sources_disagree",
 }
 COMPARISON_ALGORITHM_VERSION = 2
 
@@ -38,6 +39,16 @@ class DailyComparison:
     critical_abs_kwh: float | None = None
     critical_percent: float | None = None
     min_coverage_percent: float | None = None
+    local_source_entity: str | None = None
+    local_source_role: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    primary_local_kwh: float | None = None
+    backup_local_kwh: float | None = None
+    primary_coverage_percent: float | None = None
+    backup_coverage_percent: float | None = None
+    primary_zero_streak_hours: int | None = None
+    backup_zero_streak_hours: int | None = None
     algorithm_version: int = COMPARISON_ALGORITHM_VERSION
 
     def as_dict(self) -> dict[str, Any]:
@@ -65,6 +76,21 @@ class DailyComparison:
                 return None
             number = float(raw)
             if not math.isfinite(number) or (non_negative and number < 0):
+                raise ValueError(f"Invalid {key}")
+            return number
+
+        def optional_percentage(key: str) -> float | None:
+            number = optional_number(key, non_negative=True)
+            if number is not None and number > 100.0:
+                raise ValueError(f"Invalid {key}")
+            return number
+
+        def optional_non_negative_int(key: str) -> int | None:
+            raw = value.get(key)
+            if raw is None:
+                return None
+            number = int(raw)
+            if number < 0:
                 raise ValueError(f"Invalid {key}")
             return number
 
@@ -104,14 +130,30 @@ class DailyComparison:
             expected_official_hours=expected_hours,
             green_abs_kwh=optional_number("green_abs_kwh", non_negative=True),
             green_percent=optional_number("green_percent", non_negative=True),
-            critical_abs_kwh=optional_number(
-                "critical_abs_kwh", non_negative=True
-            ),
-            critical_percent=optional_number(
-                "critical_percent", non_negative=True
-            ),
+            critical_abs_kwh=optional_number("critical_abs_kwh", non_negative=True),
+            critical_percent=optional_number("critical_percent", non_negative=True),
             min_coverage_percent=optional_number(
                 "min_coverage_percent", non_negative=True
+            ),
+            local_source_entity=(
+                str(value["local_source_entity"])
+                if value.get("local_source_entity")
+                else None
+            ),
+            local_source_role=_optional_source_role(value.get("local_source_role")),
+            fallback_used=bool(value.get("fallback_used", False)),
+            fallback_reason=(
+                str(value["fallback_reason"]) if value.get("fallback_reason") else None
+            ),
+            primary_local_kwh=optional_number("primary_local_kwh", non_negative=True),
+            backup_local_kwh=optional_number("backup_local_kwh", non_negative=True),
+            primary_coverage_percent=optional_percentage("primary_coverage_percent"),
+            backup_coverage_percent=optional_percentage("backup_coverage_percent"),
+            primary_zero_streak_hours=optional_non_negative_int(
+                "primary_zero_streak_hours"
+            ),
+            backup_zero_streak_hours=optional_non_negative_int(
+                "backup_zero_streak_hours"
             ),
             algorithm_version=algorithm_version,
         )
@@ -139,3 +181,19 @@ class CoordinatorSnapshot:
     critical_days: int = 0
     using_cached_result: bool = False
     pending_sources: tuple[str, ...] = ()
+    local_source_entity: str | None = None
+    local_source_role: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
+    primary_local_kwh: float | None = None
+    backup_local_kwh: float | None = None
+
+
+def _optional_source_role(value: Any) -> str | None:
+    """Validate a persisted local source role."""
+    if value is None:
+        return None
+    role = str(value)
+    if role not in {"primary", "backup"}:
+        raise ValueError("Invalid local_source_role")
+    return role

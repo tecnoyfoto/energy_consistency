@@ -6,11 +6,12 @@ from datetime import timedelta
 
 DOMAIN = "energy_consistency"
 PLATFORMS = ["sensor"]
-FRONTEND_VERSION = "0.7.3"
+FRONTEND_VERSION = "0.8.0"
 
 CONF_OFFICIAL_ENERGY_ENTITY = "official_energy_entity"
 CONF_OFFICIAL_DATE_ENTITY = "official_date_entity"
 CONF_LOCAL_ENERGY_ENTITY = "local_energy_entity"
+CONF_BACKUP_LOCAL_ENERGY_ENTITY = "backup_local_energy_entity"
 CONF_NAME = "name"
 
 CONF_GREEN_ABS_KWH = "green_abs_kwh"
@@ -19,6 +20,7 @@ CONF_CRITICAL_ABS_KWH = "critical_abs_kwh"
 CONF_CRITICAL_PERCENT = "critical_percent"
 CONF_LEARNING_DAYS = "learning_days"
 CONF_FROZEN_HOURS = "frozen_hours"
+CONF_DAILY_ZERO_STREAK_HOURS = "daily_zero_streak_hours"
 CONF_MAX_OFFICIAL_DELAY_DAYS = "max_official_delay_days"
 CONF_MIN_COVERAGE_PERCENT = "min_coverage_percent"
 
@@ -29,6 +31,7 @@ DEFAULT_CRITICAL_ABS_KWH = 2.0
 DEFAULT_CRITICAL_PERCENT = 15.0
 DEFAULT_LEARNING_DAYS = 7
 DEFAULT_FROZEN_HOURS = 5.0
+DEFAULT_DAILY_ZERO_STREAK_HOURS = 3
 DEFAULT_MAX_OFFICIAL_DELAY_DAYS = 7
 DEFAULT_MIN_COVERAGE_PERCENT = 100.0
 

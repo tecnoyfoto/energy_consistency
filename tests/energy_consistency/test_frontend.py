@@ -127,7 +127,9 @@ def test_current_resource_is_unchanged() -> None:
 
 def test_yaml_mode_uses_extra_module_fallback(monkeypatch) -> None:
     loaded: list[str] = []
-    monkeypatch.setattr(frontend, "add_extra_js_url", lambda hass, url: loaded.append(url))
+    monkeypatch.setattr(
+        frontend, "add_extra_js_url", lambda hass, url: loaded.append(url)
+    )
     asyncio.run(
         frontend.async_register_frontend_resource(
             _hass(YamlResources([])), "/energy/test.js", "2"

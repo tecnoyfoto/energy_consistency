@@ -95,9 +95,7 @@ def test_single_bad_day_does_not_raise_general_warning() -> None:
 
 
 def test_two_anomalies_in_last_three_raise_warning() -> None:
-    records = [
-        compare(10, 10, day=f"2026-07-{day:02d}") for day in range(21, 25)
-    ]
+    records = [compare(10, 10, day=f"2026-07-{day:02d}") for day in range(21, 25)]
     records += [
         compare(10, 11, day="2026-07-25"),
         compare(10, 10, day="2026-07-26"),
@@ -109,9 +107,7 @@ def test_two_anomalies_in_last_three_raise_warning() -> None:
 
 
 def test_three_consecutive_critical_days_are_required_for_red() -> None:
-    records = [
-        compare(10, 10, day=f"2026-07-{day:02d}") for day in range(21, 25)
-    ] + [
+    records = [compare(10, 10, day=f"2026-07-{day:02d}") for day in range(21, 25)] + [
         compare(10, 13, day=f"2026-07-{day:02d}") for day in range(25, 28)
     ]
     status, _ = aggregate_status(records, learning_days=7)
@@ -119,9 +115,7 @@ def test_three_consecutive_critical_days_are_required_for_red() -> None:
 
 
 def test_missing_calendar_day_breaks_anomaly_streak() -> None:
-    records = [
-        compare(10, 10, day=f"2026-07-{day:02d}") for day in range(18, 23)
-    ]
+    records = [compare(10, 10, day=f"2026-07-{day:02d}") for day in range(18, 23)]
     records += [
         compare(10, 13, day="2026-07-23"),
         compare(10, 13, day="2026-07-25"),
@@ -131,9 +125,7 @@ def test_missing_calendar_day_breaks_anomaly_streak() -> None:
 
 
 def test_old_anomalies_are_not_treated_as_this_week() -> None:
-    records = [
-        compare(10, 13, day=f"2026-06-{day:02d}") for day in range(1, 6)
-    ] + [
+    records = [compare(10, 13, day=f"2026-06-{day:02d}") for day in range(1, 6)] + [
         compare(10, 10, day="2026-07-27"),
         compare(10, 10, day="2026-07-28"),
     ]
@@ -192,7 +184,9 @@ def test_invalid_numeric_values_are_rejected_or_incomplete() -> None:
 def test_expected_hours_follow_dst_calendar_days() -> None:
     class Madrid2026(tzinfo):
         def utcoffset(self, value: datetime | None) -> timedelta:
-            if value is not None and date(2026, 3, 30) <= value.date() <= date(2026, 10, 25):
+            if value is not None and date(2026, 3, 30) <= value.date() <= date(
+                2026, 10, 25
+            ):
                 return timedelta(hours=2)
             return timedelta(hours=1)
 

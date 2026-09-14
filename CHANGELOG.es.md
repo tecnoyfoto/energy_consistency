@@ -2,6 +2,24 @@
 
 Este archivo documenta los cambios destacados de Energy Consistency.
 
+## [0.8.0] - 2026-09-14
+
+### Añadido
+
+- Contador local de respaldo opcional y prioritario; las lecturas se seleccionan
+  y nunca se suman.
+- Conmutación automática para días incompletos, inválidos, no disponibles o
+  congelados del contador principal.
+- Problema de datos conservador cuando dos contadores completos no coinciden.
+- Detección configurable de congelación en días completos.
+
+### Cambiado
+
+- El historial se conserva al añadir, retirar o reordenar contadores locales.
+- Cada comparación nueva guarda el contador elegido, el motivo de respaldo, las
+  lecturas, la cobertura y las rachas de horas a cero.
+- Las configuraciones existentes de un solo contador se migran sin perder datos.
+
 ## [0.7.3] - 2026-07-31
 
 ### Corregido

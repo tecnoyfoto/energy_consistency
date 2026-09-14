@@ -12,13 +12,16 @@ the cause of a discrepancy.
 
 ## Current status
 
-Version `0.7.3` is the current public preview. It is already running in a real
+Version `0.8.0` is the current public preview. It is already running in a real
 Home Assistant installation, includes automated tests, preserves verified
 history across restarts, and deliberately rejects partial days.
 
 ## Highlights
 
 - Configuration and reconfiguration from the Home Assistant UI.
+- A primary local meter and an optional backup; their readings are never added.
+- Daily failover for incomplete or frozen primary-meter data.
+- Local-meter replacement and priority changes without losing verified history.
 - Exact comparison of matching local calendar days.
 - Complete 23, 24, and 25-hour day validation for daylight-saving changes.
 - Local reconstruction from hourly Recorder statistics.
@@ -38,13 +41,14 @@ history across restarts, and deliberately rejects partial days.
 
 ## Requirements
 
-You need three Home Assistant entities:
+You need three Home Assistant entities and may configure a fourth:
 
 1. An official sensor containing daily energy in `Wh`, `kWh`, or `MWh`.
 2. An entity whose state identifies the date represented by that official
    value.
 3. A cumulative local energy sensor with the `energy` device class and the
    `total` or `total_increasing` state class.
+4. Optionally, a second cumulative local energy sensor used only as a backup.
 
 The official source must provide enough information to prove that a day is
 complete. The integration currently supports:
@@ -90,12 +94,12 @@ For a typical eData setup, select:
 - **Local cumulative energy:** the single whole-home cumulative channel from
   the local meter.
 
-Do not add several local channels unless the physical installation actually
-requires their sum. Select the entity that represents the whole-home total.
+Both local meters must represent the same physical whole-home quantity. The
+backup replaces the primary only when needed; their readings are never added.
 
-Changing the display name preserves history. Changing any source entity starts
-a new history so measurements from different source combinations are never
-mixed.
+Changing the display name, local meters, or their priority preserves verified
+history. Changing either official source starts a new history. Every new record
+stores which local meter was selected and whether failover was used.
 
 ## Status model
 

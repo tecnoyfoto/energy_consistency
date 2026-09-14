@@ -56,6 +56,16 @@ def test_new_record_round_trip_preserves_audit_metadata() -> None:
         critical_abs_kwh=2,
         critical_percent=15,
         min_coverage_percent=100,
+        local_source_entity="sensor.airzone",
+        local_source_role="backup",
+        fallback_used=True,
+        fallback_reason="primary_frozen",
+        primary_local_kwh=9.71,
+        backup_local_kwh=11.55,
+        primary_coverage_percent=100,
+        backup_coverage_percent=100,
+        primary_zero_streak_hours=3,
+        backup_zero_streak_hours=0,
     )
     restored = DailyComparison.from_dict(original.as_dict())
     assert restored == original

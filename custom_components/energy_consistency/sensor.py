@@ -6,13 +6,18 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
-from homeassistant.const import EntityCategory, PERCENTAGE, UnitOfEnergy, UnitOfTime
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+)
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import EnergyConsistencyConfigEntry
 from .const import (
     CONF_NAME,
     DEFAULT_NAME,
@@ -27,7 +32,6 @@ from .const import (
     STATUS_WARNING,
 )
 from .coordinator import EnergyConsistencyCoordinator
-from . import EnergyConsistencyConfigEntry
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -164,6 +168,12 @@ class EnergyConsistencyStatusSensor(EnergyConsistencyBaseSensor):
             "pending_expected_official_hours",
             "using_cached_result",
             "pending_sources",
+            "local_source_entity",
+            "local_source_role",
+            "fallback_used",
+            "fallback_reason",
+            "primary_local_kwh",
+            "backup_local_kwh",
             "recent_comparisons",
         }
     )
@@ -212,6 +222,12 @@ class EnergyConsistencyStatusSensor(EnergyConsistencyBaseSensor):
             "pending_expected_official_hours": data.pending_expected_official_hours,
             "using_cached_result": data.using_cached_result,
             "pending_sources": list(data.pending_sources),
+            "local_source_entity": data.local_source_entity,
+            "local_source_role": data.local_source_role,
+            "fallback_used": data.fallback_used,
+            "fallback_reason": data.fallback_reason,
+            "primary_local_kwh": data.primary_local_kwh,
+            "backup_local_kwh": data.backup_local_kwh,
             "recent_comparisons": [
                 {
                     "date": record.date,
@@ -224,6 +240,10 @@ class EnergyConsistencyStatusSensor(EnergyConsistencyBaseSensor):
                     "expected_official_hours": record.expected_official_hours,
                     "status": record.status,
                     "reason": record.reason,
+                    "local_source_entity": record.local_source_entity,
+                    "local_source_role": record.local_source_role,
+                    "fallback_used": record.fallback_used,
+                    "fallback_reason": record.fallback_reason,
                 }
                 for record in self.coordinator.records[-7:]
             ],

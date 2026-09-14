@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime, time, timedelta
 import logging
 import math
-from pathlib import Path
 import shutil
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any
 
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import (
+    ATTR_UNIT_OF_MEASUREMENT,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
@@ -23,8 +27,10 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     BACKFILL_LOOKBACK_DAYS,
+    CONF_BACKUP_LOCAL_ENERGY_ENTITY,
     CONF_CRITICAL_ABS_KWH,
     CONF_CRITICAL_PERCENT,
+    CONF_DAILY_ZERO_STREAK_HOURS,
     CONF_FROZEN_HOURS,
     CONF_GREEN_ABS_KWH,
     CONF_GREEN_PERCENT,
@@ -38,6 +44,7 @@ from .const import (
     DAY_WARNING,
     DEFAULT_CRITICAL_ABS_KWH,
     DEFAULT_CRITICAL_PERCENT,
+    DEFAULT_DAILY_ZERO_STREAK_HOURS,
     DEFAULT_FROZEN_HOURS,
     DEFAULT_GREEN_ABS_KWH,
     DEFAULT_GREEN_PERCENT,
@@ -61,6 +68,11 @@ from .engine import (
     official_day_is_complete,
     should_recalculate_day,
 )
+from .local_sources import (
+    LocalDayReading,
+    official_sources_changed,
+    select_local_source,
+)
 from .models import CoordinatorSnapshot, DailyComparison
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,9 +82,7 @@ INVALID_STATES = {STATE_UNKNOWN, STATE_UNAVAILABLE, "none", ""}
 class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
     """Compare an official daily value with local Recorder statistics."""
 
-    def __init__(
-        self, hass: HomeAssistant, entry: ConfigEntry
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
@@ -86,6 +96,17 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         self.official_energy_entity = entry.data[CONF_OFFICIAL_ENERGY_ENTITY]
         self.official_date_entity = entry.data[CONF_OFFICIAL_DATE_ENTITY]
         self.local_energy_entity = entry.data[CONF_LOCAL_ENERGY_ENTITY]
+        self.backup_local_energy_entity = entry.data.get(
+            CONF_BACKUP_LOCAL_ENERGY_ENTITY
+        )
+        self.local_energy_entities = tuple(
+            entity_id
+            for entity_id in (
+                self.local_energy_entity,
+                self.backup_local_energy_entity,
+            )
+            if entity_id
+        )
         self.records: list[DailyComparison] = []
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, f"{STORAGE_KEY_PREFIX}{entry.entry_id}"
@@ -94,6 +115,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         self._unsub_delayed_refresh = None
         self._started_at = dt_util.now()
         self._startup_grace_enabled = not hass.is_running
+        self._latest_local_issue: tuple[date, str] | None = None
 
     def option(self, key: str, default: Any) -> Any:
         """Return an option, falling back to the default."""
@@ -104,13 +126,15 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         stored = await self._store.async_load() or {}
         current_sources = self._source_storage_metadata()
         stored_sources = stored.get("sources")
-        sources_changed = (
+        sources_changed = official_sources_changed(stored_sources, current_sources)
+        local_sources_changed = (
             isinstance(stored_sources, dict)
+            and not sources_changed
             and stored_sources != current_sources
         )
         loaded_records: dict[str, DailyComparison] = {}
         rejected_records = 0
-        for item in (() if sources_changed else stored.get("records", [])):
+        for item in () if sources_changed else stored.get("records", []):
             if not isinstance(item, dict):
                 rejected_records += 1
                 continue
@@ -126,16 +150,22 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         ]
         reclassified = self._reclassify_records()
         if sources_changed:
-            _LOGGER.info("Energy sources changed; starting a new comparison history")
+            _LOGGER.info(
+                "Official energy sources changed; starting a new comparison history"
+            )
             await self._async_clear_reports()
-        if sources_changed or rejected_records or reclassified:
+        elif local_sources_changed:
+            _LOGGER.info(
+                "Local meter configuration changed; preserving comparison history"
+            )
+        if sources_changed or local_sources_changed or rejected_records or reclassified:
             await self._async_persist()
             await self._async_write_reports()
 
         entities = {
             self.official_energy_entity,
             self.official_date_entity,
-            self.local_energy_entity,
+            *self.local_energy_entities,
         }
 
         async def _delayed_refresh(_: datetime) -> None:
@@ -148,7 +178,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             # sequentially. Debounce the pair so they are never compared crossed.
             # The local total can change frequently, so refresh for it only when
             # its availability changes (for example, after a restart).
-            if event.data.get("entity_id") == self.local_energy_entity:
+            if event.data.get("entity_id") in self.local_energy_entities:
                 old_state = event.data.get("old_state")
                 new_state = event.data.get("new_state")
                 old_invalid = (
@@ -180,16 +210,15 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
 
     async def _async_update_data(self) -> CoordinatorSnapshot:
         """Refresh health and, when possible, compare the latest official day."""
+        self._latest_local_issue = None
         official_state = self.hass.states.get(self.official_energy_entity)
         date_state = self.hass.states.get(self.official_date_entity)
-        local_state = self.hass.states.get(self.local_energy_entity)
 
         missing = [
             entity_id
             for entity_id, state in (
                 (self.official_energy_entity, official_state),
                 (self.official_date_entity, date_state),
-                (self.local_energy_entity, local_state),
             )
             if state is None or state.state.lower() in INVALID_STATES
         ]
@@ -206,7 +235,6 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
 
         assert official_state is not None
         assert date_state is not None
-        assert local_state is not None
 
         official_date = _parse_date(date_state.state)
         official_kwh = _energy_to_kwh(
@@ -231,9 +259,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         today = dt_util.now().date()
         delay_days = max((today - official_date).days, 0)
         max_delay = int(
-            self.option(
-                CONF_MAX_OFFICIAL_DELAY_DAYS, DEFAULT_MAX_OFFICIAL_DELAY_DAYS
-            )
+            self.option(CONF_MAX_OFFICIAL_DELAY_DAYS, DEFAULT_MAX_OFFICIAL_DELAY_DAYS)
         )
         if delay_days > max_delay:
             return self._snapshot(
@@ -243,9 +269,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             )
 
         edata_adapter_state = await self._async_backfill_edata_days(today)
-        using_edata_history = (
-            edata_adapter_state is EDataAdapterState.HISTORY_AVAILABLE
-        )
+        using_edata_history = edata_adapter_state is EDataAdapterState.HISTORY_AVAILABLE
 
         official_hours = _optional_float(
             official_state.attributes.get("last_registered_day_hours")
@@ -253,9 +277,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         expected_official_hours = expected_hours_for_day(
             official_date, dt_util.DEFAULT_TIME_ZONE
         )
-        if not official_day_is_complete(
-            official_hours, expected_official_hours
-        ):
+        if not official_day_is_complete(official_hours, expected_official_hours):
             if cached := self._cached_snapshot(
                 ["official_day_incomplete"],
                 official_hours=official_hours,
@@ -271,10 +293,16 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             )
 
         frozen_hours = float(self.option(CONF_FROZEN_HOURS, DEFAULT_FROZEN_HOURS))
-        unchanged_for = dt_util.now() - local_state.last_changed
-        if unchanged_for > timedelta(hours=frozen_hours):
+        usable_local_states = []
+        for entity_id in self.local_energy_entities:
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state.lower() in INVALID_STATES:
+                continue
+            if dt_util.now() - state.last_changed <= timedelta(hours=frozen_hours):
+                usable_local_states.append(state)
+        if not usable_local_states:
             if self._within_startup_grace() and (
-                cached := self._cached_snapshot([self.local_energy_entity])
+                cached := self._cached_snapshot(list(self.local_energy_entities))
             ):
                 return cached
             return self._snapshot(
@@ -295,6 +323,19 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             (record for record in self.records if record.date == date_key), None
         )
         if using_edata_history and comparison is None:
+            if (
+                self._latest_local_issue is not None
+                and self._latest_local_issue[0] == official_date
+                and self._latest_local_issue[1]
+                in {"local_sensor_may_be_frozen", "local_sources_disagree"}
+            ):
+                return self._snapshot(
+                    STATUS_DATA_ISSUE,
+                    self._latest_local_issue[1],
+                    official_delay_days=delay_days,
+                    official_hours=official_hours,
+                    expected_official_hours=expected_official_hours,
+                )
             return self._snapshot(
                 STATUS_WAITING,
                 "waiting_for_complete_official_day",
@@ -303,9 +344,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 expected_official_hours=expected_official_hours,
             )
 
-        if not using_edata_history and should_recalculate_day(
-            comparison, official_kwh
-        ):
+        if not using_edata_history and should_recalculate_day(comparison, official_kwh):
             comparison = await self._async_compare_day(
                 official_date,
                 official_kwh,
@@ -313,6 +352,17 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 expected_official_hours=expected_official_hours,
             )
             if comparison.status == DAY_INCOMPLETE:
+                if comparison.reason in {
+                    "local_sensor_may_be_frozen",
+                    "local_sources_disagree",
+                }:
+                    return self._snapshot(
+                        STATUS_DATA_ISSUE,
+                        comparison.reason,
+                        official_delay_days=delay_days,
+                        official_hours=official_hours,
+                        expected_official_hours=expected_official_hours,
+                    )
                 if cached := self._cached_snapshot(["recorder"]):
                     return cached
                 return self._snapshot(
@@ -365,9 +415,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             return None
         age_days = max((today - latest_date).days, 0)
         max_delay = int(
-            self.option(
-                CONF_MAX_OFFICIAL_DELAY_DAYS, DEFAULT_MAX_OFFICIAL_DELAY_DAYS
-            )
+            self.option(CONF_MAX_OFFICIAL_DELAY_DAYS, DEFAULT_MAX_OFFICIAL_DELAY_DAYS)
         )
         if not cached_result_is_fresh(latest.date, today, max_delay):
             return None
@@ -396,6 +444,12 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             critical_days=sum(record.status == DAY_CRITICAL for record in recent),
             using_cached_result=True,
             pending_sources=tuple(self._source_roles(pending_sources)),
+            local_source_entity=latest.local_source_entity,
+            local_source_role=latest.local_source_role,
+            fallback_used=latest.fallback_used,
+            fallback_reason=latest.fallback_reason,
+            primary_local_kwh=latest.primary_local_kwh,
+            backup_local_kwh=latest.backup_local_kwh,
         )
 
     def _source_roles(self, sources: list[str]) -> list[str]:
@@ -403,10 +457,12 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         roles = {
             self.official_energy_entity: "official_energy",
             self.official_date_entity: "official_date",
-            self.local_energy_entity: "local_energy",
+            self.local_energy_entity: "primary_local_energy",
             "recorder": "local_statistics",
             "official_day_incomplete": "official_day_incomplete",
         }
+        if self.backup_local_energy_entity:
+            roles[self.backup_local_energy_entity] = "backup_local_energy"
         return [roles.get(source, "source") for source in sources]
 
     @staticmethod
@@ -424,9 +480,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             if earliest_day <= date.fromisoformat(record.date) <= latest_day
         ]
 
-    async def _async_backfill_edata_days(
-        self, today: date
-    ) -> EDataAdapterState:
+    async def _async_backfill_edata_days(self, today: date) -> EDataAdapterState:
         """Recover eData days and report whether its history is authoritative."""
         entity_entry = er.async_get(self.hass).async_get(self.official_energy_entity)
         if entity_entry is None or entity_entry.config_entry_id is None:
@@ -484,9 +538,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             )
             if not should_recalculate_day(existing, official_kwh):
                 continue
-            expected_hours = expected_hours_for_day(
-                row_date, dt_util.DEFAULT_TIME_ZONE
-            )
+            expected_hours = expected_hours_for_day(row_date, dt_util.DEFAULT_TIME_ZONE)
             comparison = await self._async_compare_day(
                 row_date,
                 official_kwh,
@@ -494,6 +546,11 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 expected_official_hours=expected_hours,
             )
             if comparison.status == DAY_INCOMPLETE:
+                if (
+                    self._latest_local_issue is None
+                    or row_date > self._latest_local_issue[0]
+                ):
+                    self._latest_local_issue = (row_date, comparison.reason)
                 continue
             changed |= self._upsert_record(comparison)
 
@@ -510,21 +567,74 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         official_hours: float | None = None,
         expected_official_hours: int | None = None,
     ) -> DailyComparison:
-        """Build a comparison only when the local day is fully available."""
-        local_kwh, coverage = await self._async_local_day(official_date)
+        """Build a comparison using exactly one healthy local meter."""
+        primary = await self._async_local_day(
+            self.local_energy_entity,
+            "primary",
+            official_date,
+        )
+        backup = (
+            await self._async_local_day(
+                self.backup_local_energy_entity,
+                "backup",
+                official_date,
+            )
+            if self.backup_local_energy_entity
+            else None
+        )
         thresholds = self._comparison_thresholds()
-        return classify_day(
+        selection = select_local_source(
+            primary,
+            backup,
+            zero_streak_limit_hours=int(
+                self.option(
+                    CONF_DAILY_ZERO_STREAK_HOURS,
+                    DEFAULT_DAILY_ZERO_STREAK_HOURS,
+                )
+            ),
+            agreement_absolute_kwh=thresholds["green_abs_kwh"],
+            agreement_percent=thresholds["green_percent"],
+        )
+        selected = selection.reading
+        comparison = classify_day(
             date=official_date.isoformat(),
             official_kwh=official_kwh,
-            local_kwh=local_kwh,
-            coverage_percent=coverage,
+            local_kwh=selected.kwh if selected else None,
+            coverage_percent=(
+                selected.coverage_percent
+                if selected
+                else max(
+                    primary.coverage_percent,
+                    backup.coverage_percent if backup else 0.0,
+                )
+            ),
             **thresholds,
             official_hours=official_hours,
             expected_official_hours=expected_official_hours,
         )
+        if selected is None:
+            comparison.reason = selection.reason
+        comparison.local_source_entity = selected.entity_id if selected else None
+        comparison.local_source_role = selected.role if selected else None
+        comparison.fallback_used = selection.fallback_used
+        comparison.fallback_reason = selection.fallback_reason
+        comparison.primary_local_kwh = primary.kwh
+        comparison.backup_local_kwh = backup.kwh if backup else None
+        comparison.primary_coverage_percent = primary.coverage_percent
+        comparison.backup_coverage_percent = backup.coverage_percent if backup else None
+        comparison.primary_zero_streak_hours = primary.zero_streak_hours
+        comparison.backup_zero_streak_hours = (
+            backup.zero_streak_hours if backup else None
+        )
+        return comparison
 
-    async def _async_local_day(self, day: date) -> tuple[float | None, float]:
-        """Return local kWh and hourly statistics coverage for a local day."""
+    async def _async_local_day(
+        self,
+        entity_id: str,
+        role: str,
+        day: date,
+    ) -> LocalDayReading:
+        """Return one meter's kWh, coverage, and frozen-hour evidence."""
         local_start = datetime.combine(day, time.min, tzinfo=dt_util.DEFAULT_TIME_ZONE)
         local_end = datetime.combine(
             day + timedelta(days=1), time.min, tzinfo=dt_util.DEFAULT_TIME_ZONE
@@ -539,37 +649,79 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 self.hass,
                 start_utc,
                 end_utc,
-                {self.local_energy_entity},
+                {entity_id},
                 "hour",
                 None,
                 {"change"},
             )
-        except Exception:  # noqa: BLE001 - Recorder failures become data health issues
+        except Exception:
             _LOGGER.exception(
                 "Unable to read Recorder statistics for %s",
-                self.local_energy_entity,
+                entity_id,
             )
-            return None, 0.0
-        rows = result.get(self.local_energy_entity, [])
+            return LocalDayReading(
+                entity_id,
+                role,
+                None,
+                0.0,
+                error="insufficient_local_coverage",
+            )
+        rows = result.get(entity_id, [])
         changes = [row.get("change") for row in rows if row.get("change") is not None]
-        coverage = min(len(changes) / expected_hours * 100, 100.0) if expected_hours else 0
+        coverage = (
+            min(len(changes) / expected_hours * 100, 100.0) if expected_hours else 0
+        )
         if len(changes) != expected_hours:
-            return None, coverage
+            return LocalDayReading(
+                entity_id,
+                role,
+                None,
+                coverage,
+                error="insufficient_local_coverage",
+            )
 
         numeric_changes: list[float] = []
         for value in changes:
             try:
                 number = float(value)
             except (TypeError, ValueError):
-                return None, coverage
+                return LocalDayReading(
+                    entity_id,
+                    role,
+                    None,
+                    coverage,
+                    error="invalid_local_value",
+                )
             if not math.isfinite(number) or number < 0:
-                return None, coverage
+                return LocalDayReading(
+                    entity_id,
+                    role,
+                    None,
+                    coverage,
+                    error="invalid_local_value",
+                )
             numeric_changes.append(number)
 
-        state = self.hass.states.get(self.local_energy_entity)
+        zero_streak = 0
+        longest_zero_streak = 0
+        for change in numeric_changes:
+            if abs(change) <= 1e-9:
+                zero_streak += 1
+                longest_zero_streak = max(longest_zero_streak, zero_streak)
+            else:
+                zero_streak = 0
+
+        state = self.hass.states.get(entity_id)
         unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) if state else None
         local_value = _energy_to_kwh(sum(numeric_changes), unit)
-        return local_value, coverage
+        return LocalDayReading(
+            entity_id,
+            role,
+            local_value,
+            coverage,
+            zero_streak_hours=longest_zero_streak,
+            error=None if local_value is not None else "invalid_local_value",
+        )
 
     def _within_startup_grace(self) -> bool:
         """Return whether a real Home Assistant startup is still settling."""
@@ -592,6 +744,16 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 official_hours=record.official_hours,
                 expected_official_hours=record.expected_official_hours,
             )
+            comparison.local_source_entity = record.local_source_entity
+            comparison.local_source_role = record.local_source_role
+            comparison.fallback_used = record.fallback_used
+            comparison.fallback_reason = record.fallback_reason
+            comparison.primary_local_kwh = record.primary_local_kwh
+            comparison.backup_local_kwh = record.backup_local_kwh
+            comparison.primary_coverage_percent = record.primary_coverage_percent
+            comparison.backup_coverage_percent = record.backup_coverage_percent
+            comparison.primary_zero_streak_hours = record.primary_zero_streak_hours
+            comparison.backup_zero_streak_hours = record.backup_zero_streak_hours
             if comparison.status == DAY_INCOMPLETE:
                 changed = True
                 continue
@@ -656,19 +818,18 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             }
         )
 
-    def _source_storage_metadata(self) -> dict[str, str]:
+    def _source_storage_metadata(self) -> dict[str, str | None]:
         """Return source identity stored alongside comparisons."""
         return {
             "official_energy": self.official_energy_entity,
             "official_date": self.official_date_entity,
             "local_energy": self.local_energy_entity,
+            "backup_local_energy": self.backup_local_energy_entity,
         }
 
     async def _async_clear_reports(self) -> None:
         """Remove reports that belong to a previous source combination."""
-        report_dir = Path(
-            self.hass.config.path(DOMAIN, "reports", self.entry.entry_id)
-        )
+        report_dir = Path(self.hass.config.path(DOMAIN, "reports", self.entry.entry_id))
         try:
             await self.hass.async_add_executor_job(shutil.rmtree, report_dir, True)
         except OSError:
@@ -683,9 +844,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
 
     def _write_monthly_report(self) -> None:
         """Write compact monthly CSV reports under the configuration folder."""
-        report_dir = Path(
-            self.hass.config.path(DOMAIN, "reports", self.entry.entry_id)
-        )
+        report_dir = Path(self.hass.config.path(DOMAIN, "reports", self.entry.entry_id))
         report_dir.mkdir(parents=True, exist_ok=True)
         months = sorted({record.date[:7] for record in self.records})
         for month in months:
@@ -710,6 +869,16 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                         "critical_abs_kwh",
                         "critical_percent",
                         "min_coverage_percent",
+                        "local_source_entity",
+                        "local_source_role",
+                        "fallback_used",
+                        "fallback_reason",
+                        "primary_local_kwh",
+                        "backup_local_kwh",
+                        "primary_coverage_percent",
+                        "backup_coverage_percent",
+                        "primary_zero_streak_hours",
+                        "backup_zero_streak_hours",
                         "algorithm_version",
                     ]
                 )
@@ -732,6 +901,16 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                                 record.critical_abs_kwh,
                                 record.critical_percent,
                                 record.min_coverage_percent,
+                                record.local_source_entity,
+                                record.local_source_role,
+                                record.fallback_used,
+                                record.fallback_reason,
+                                record.primary_local_kwh,
+                                record.backup_local_kwh,
+                                record.primary_coverage_percent,
+                                record.backup_coverage_percent,
+                                record.primary_zero_streak_hours,
+                                record.backup_zero_streak_hours,
                                 record.algorithm_version,
                             ]
                         )
@@ -772,6 +951,12 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             critical_days=sum(record.status == DAY_CRITICAL for record in recent),
             using_cached_result=False,
             pending_sources=(),
+            local_source_entity=latest.local_source_entity if latest else None,
+            local_source_role=latest.local_source_role if latest else None,
+            fallback_used=latest.fallback_used if latest else False,
+            fallback_reason=latest.fallback_reason if latest else None,
+            primary_local_kwh=latest.primary_local_kwh if latest else None,
+            backup_local_kwh=latest.backup_local_kwh if latest else None,
         )
 
 

@@ -4,32 +4,36 @@
     "step": {
       "user": {
         "title": "Configurar la comparación energética diaria",
-        "description": "Selecciona el consumo diario oficial, la entidad que contiene la fecha representada por ese valor y el contador acumulado local.",
+        "description": "Selecciona los datos oficiales, un contador local principal y, opcionalmente, uno de respaldo. Los contadores locales nunca se suman.",
         "data": {
           "name": "Nombre",
           "official_energy_entity": "Consumo diario oficial",
           "official_date_entity": "Fecha de la lectura oficial",
-          "local_energy_entity": "Energía acumulada local"
+          "local_energy_entity": "Energía acumulada local principal",
+          "backup_local_energy_entity": "Energía acumulada local de respaldo (opcional)"
         },
         "data_description": {
           "official_energy_entity": "Energía consumida durante el último día completo publicado por la distribuidora.",
           "official_date_entity": "Entidad cuyo estado contiene la fecha o marca temporal representada por el valor oficial.",
-          "local_energy_entity": "Contador de energía total o total creciente registrado por Home Assistant."
+          "local_energy_entity": "Contador preferido de tipo total o total creciente. Se utiliza siempre que sus datos diarios sean válidos.",
+          "backup_local_energy_entity": "Se utiliza en lugar del principal, nunca se suma, cuando el día principal está incompleto o congelado."
         }
       },
       "reconfigure": {
         "title": "Reconfigurar la comparación energética diaria",
-        "description": "Cambia el nombre o las entidades de origen. Al cambiar una fuente se inicia un historial de comparación nuevo.",
+        "description": "Cambia el nombre o las entidades. Los cambios de contador local conservan el historial; cambiar la fuente oficial inicia uno nuevo.",
         "data": {
           "name": "Nombre",
           "official_energy_entity": "Consumo diario oficial",
           "official_date_entity": "Fecha de la lectura oficial",
-          "local_energy_entity": "Energía acumulada local"
+          "local_energy_entity": "Energía acumulada local principal",
+          "backup_local_energy_entity": "Energía acumulada local de respaldo (opcional)"
         },
         "data_description": {
           "official_energy_entity": "Energía consumida durante el último día completo publicado por la fuente oficial.",
           "official_date_entity": "Entidad cuyo estado contiene la fecha o marca temporal representada por el valor oficial.",
-          "local_energy_entity": "Contador de energía total o total creciente registrado por Home Assistant."
+          "local_energy_entity": "Contador preferido de tipo total o total creciente. Intercámbialo con el respaldo para cambiar la prioridad.",
+          "backup_local_energy_entity": "Respaldo opcional. Déjalo vacío cuando solo haya un contador. Los valores nunca se suman."
         }
       }
     },
@@ -61,6 +65,7 @@
           "critical_percent": "Umbral relativo crítico (%)",
           "learning_days": "Días válidos de aprendizaje",
           "frozen_hours": "Tiempo sin cambios para detectar congelación (horas)",
+          "daily_zero_streak_hours": "Horas consecutivas de consumo cero",
           "max_official_delay_days": "Retraso oficial máximo (días)"
         }
       }

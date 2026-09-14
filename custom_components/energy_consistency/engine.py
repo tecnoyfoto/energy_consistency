@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta, timezone
-from datetime import tzinfo
 import math
+from collections.abc import Sequence
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 
 from .const import (
     DAY_CRITICAL,
@@ -86,16 +85,18 @@ def classify_day(
         local_kwh is not None and math.isfinite(local_kwh) and local_kwh >= 0
     )
     coverage_is_valid = math.isfinite(coverage_percent) and 0 <= coverage_percent <= 100
-    if not local_is_valid or not coverage_is_valid or coverage_percent < min_coverage_percent:
+    if (
+        not local_is_valid
+        or not coverage_is_valid
+        or coverage_percent < min_coverage_percent
+    ):
         return DailyComparison(
             date=date,
             official_kwh=round(official_kwh, 3),
             local_kwh=None if local_kwh is None else round(local_kwh, 3),
             difference_kwh=None,
             difference_percent=None,
-            coverage_percent=(
-                round(coverage_percent, 1) if coverage_is_valid else 0.0
-            ),
+            coverage_percent=(round(coverage_percent, 1) if coverage_is_valid else 0.0),
             status=DAY_INCOMPLETE,
             reason=(
                 "invalid_local_value"
@@ -128,9 +129,8 @@ def classify_day(
     if absolute_difference <= green_limit:
         status = DAY_OK
         reason = "within_tolerance"
-    elif (
-        absolute_difference > critical_abs_kwh
-        and (official_kwh <= 0 or relative_difference > critical_percent)
+    elif absolute_difference > critical_abs_kwh and (
+        official_kwh <= 0 or relative_difference > critical_percent
     ):
         status = DAY_CRITICAL
         reason = "large_difference"
@@ -190,9 +190,8 @@ def aggregate_status(
         for offset in (2, 1, 0)
         if (day := latest_day - timedelta(days=offset)) in by_day
     ]
-    consecutive_critical = (
-        len(last_three) == 3
-        and all(record.status == DAY_CRITICAL for record in last_three)
+    consecutive_critical = len(last_three) == 3 and all(
+        record.status == DAY_CRITICAL for record in last_three
     )
     critical_in_week = sum(record.status == DAY_CRITICAL for record in recent)
     anomalous_last_three = (

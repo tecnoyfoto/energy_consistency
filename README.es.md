@@ -12,7 +12,7 @@ la causa de una diferencia.
 
 ## Estado actual
 
-La versión `0.7.3` es la versión preliminar pública actual. Ya funciona en una
+La versión `0.8.0` es la versión preliminar pública actual. Ya funciona en una
 instalación real de Home Assistant, dispone de pruebas automáticas, conserva el
 historial verificado después de los reinicios y rechaza deliberadamente los
 días parciales.
@@ -20,6 +20,9 @@ días parciales.
 ## Funciones principales
 
 - Configuración y reconfiguración desde la interfaz de Home Assistant.
+- Un contador local principal y otro de respaldo opcional; nunca se suman.
+- Conmutación diaria si el contador principal está incompleto o congelado.
+- Cambio de contador y prioridad sin perder el historial verificado.
 - Comparación exacta de días naturales coincidentes.
 - Validación de días completos de 23, 24 y 25 horas por los cambios horarios.
 - Reconstrucción local mediante estadísticas horarias de Recorder.
@@ -40,12 +43,13 @@ días parciales.
 
 ## Requisitos
 
-Necesitas tres entidades de Home Assistant:
+Necesitas tres entidades de Home Assistant y puedes configurar una cuarta:
 
 1. Un sensor oficial de energía diaria en `Wh`, `kWh` o `MWh`.
 2. Una entidad cuyo estado identifique la fecha representada por ese valor.
 3. Un sensor local de energía acumulada con clase de dispositivo `energy` y
    clase de estado `total` o `total_increasing`.
+4. Opcionalmente, un segundo sensor local acumulado utilizado solo como respaldo.
 
 La fuente oficial debe proporcionar información suficiente para demostrar que
 el día está completo. Actualmente se admite:
@@ -92,11 +96,13 @@ En una instalación típica con eData, selecciona:
 - **Energía acumulada local:** el único canal acumulado que representa el total
   de toda la vivienda.
 
-No sumes varios canales locales salvo que la instalación física lo requiera.
-Selecciona la entidad que represente el total general de la vivienda.
+Los dos contadores locales deben representar la misma magnitud física de toda la
+vivienda. El respaldo sustituye al principal solo cuando hace falta; sus lecturas
+nunca se suman.
 
-Cambiar el nombre conserva el historial. Cambiar cualquiera de las fuentes
-inicia un historial nuevo para no mezclar mediciones diferentes.
+Cambiar el nombre, los contadores locales o su prioridad conserva el historial
+verificado. Cambiar una fuente oficial inicia un historial nuevo. Cada registro
+nuevo guarda qué contador local se utilizó y si hubo conmutación.
 
 ## Modelo de estados
 

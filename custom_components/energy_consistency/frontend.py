@@ -31,9 +31,7 @@ async def async_register_frontend_resource(
         return
 
     if isinstance(resources, ResourceStorageCollection):
-        await resources.async_create_item(
-            {"res_type": "module", "url": versioned_url}
-        )
+        await resources.async_create_item({"res_type": "module", "url": versioned_url})
     else:
         # YAML-managed Lovelace resources cannot be changed persistently.
         add_extra_js_url(hass, versioned_url)

@@ -4,32 +4,36 @@
     "step": {
       "user": {
         "title": "Configure daily energy comparison",
-        "description": "Select an official daily energy sensor, the entity containing the date represented by that value, and a cumulative local energy sensor.",
+        "description": "Select the official daily data, a primary local meter, and optionally a backup meter. Local meters are never added together.",
         "data": {
           "name": "Name",
           "official_energy_entity": "Official daily energy",
           "official_date_entity": "Date of the official reading",
-          "local_energy_entity": "Local cumulative energy"
+          "local_energy_entity": "Primary local cumulative energy",
+          "backup_local_energy_entity": "Backup local cumulative energy (optional)"
         },
         "data_description": {
           "official_energy_entity": "Energy consumed on the latest complete day reported by the distributor.",
           "official_date_entity": "Entity whose state contains the date or timestamp represented by the official value.",
-          "local_energy_entity": "Total or total-increasing energy entity recorded by Home Assistant."
+          "local_energy_entity": "Preferred total or total-increasing meter. Its value is used whenever its daily data is healthy.",
+          "backup_local_energy_entity": "Used instead of, never added to, the primary when the primary day is incomplete or frozen."
         }
       },
       "reconfigure": {
         "title": "Reconfigure daily energy comparison",
-        "description": "Change the display name or source entities. Changing a source starts a new comparison history.",
+        "description": "Change the display name or source entities. Local-meter changes preserve history; official-source changes start a new history.",
         "data": {
           "name": "Name",
           "official_energy_entity": "Official daily energy",
           "official_date_entity": "Date of the official reading",
-          "local_energy_entity": "Local cumulative energy"
+          "local_energy_entity": "Primary local cumulative energy",
+          "backup_local_energy_entity": "Backup local cumulative energy (optional)"
         },
         "data_description": {
           "official_energy_entity": "Energy consumed on the latest complete day reported by the official source.",
           "official_date_entity": "Entity whose state contains the date or timestamp represented by the official value.",
-          "local_energy_entity": "Total or total-increasing energy entity recorded by Home Assistant."
+          "local_energy_entity": "Preferred total or total-increasing meter. Swap this with the backup to change priority.",
+          "backup_local_energy_entity": "Optional fallback. Leave empty when only one meter is installed. Values are never summed."
         }
       }
     },
@@ -61,6 +65,7 @@
           "critical_percent": "Critical relative threshold (%)",
           "learning_days": "Valid learning days",
           "frozen_hours": "Unchanged sensor timeout (hours)",
+          "daily_zero_streak_hours": "Consecutive zero-consumption hours",
           "max_official_delay_days": "Maximum official delay (days)"
         }
       }

@@ -5,17 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import selector
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import selector
 
 from .const import (
+    CONF_BACKUP_LOCAL_ENERGY_ENTITY,
     CONF_CRITICAL_ABS_KWH,
     CONF_CRITICAL_PERCENT,
+    CONF_DAILY_ZERO_STREAK_HOURS,
     CONF_FROZEN_HOURS,
     CONF_GREEN_ABS_KWH,
     CONF_GREEN_PERCENT,
@@ -27,6 +28,7 @@ from .const import (
     CONF_OFFICIAL_ENERGY_ENTITY,
     DEFAULT_CRITICAL_ABS_KWH,
     DEFAULT_CRITICAL_PERCENT,
+    DEFAULT_DAILY_ZERO_STREAK_HOURS,
     DEFAULT_FROZEN_HOURS,
     DEFAULT_GREEN_ABS_KWH,
     DEFAULT_GREEN_PERCENT,
@@ -43,12 +45,13 @@ def _entity_selector() -> selector.EntitySelector:
 
 
 def _entry_unique_id(data: dict[str, Any]) -> str:
-    """Build a stable identity from the three source entities."""
+    """Build a stable identity from the configured source entities."""
     return "|".join(
         (
             data[CONF_OFFICIAL_ENERGY_ENTITY],
             data[CONF_OFFICIAL_DATE_ENTITY],
             data[CONF_LOCAL_ENERGY_ENTITY],
+            data.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY, ""),
         )
     )
 
@@ -56,19 +59,28 @@ def _entry_unique_id(data: dict[str, Any]) -> str:
 def _source_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     """Return the source selection schema with optional current defaults."""
     defaults = defaults or {}
+
     def required_entity(key: str) -> vol.Required:
         if key in defaults:
             return vol.Required(key, default=defaults[key])
         return vol.Required(key)
 
+    backup = (
+        vol.Optional(
+            CONF_BACKUP_LOCAL_ENERGY_ENTITY,
+            default=defaults[CONF_BACKUP_LOCAL_ENERGY_ENTITY],
+        )
+        if defaults.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY)
+        else vol.Optional(CONF_BACKUP_LOCAL_ENERGY_ENTITY)
+    )
+
     return vol.Schema(
         {
-            vol.Required(
-                CONF_NAME, default=defaults.get(CONF_NAME, DEFAULT_NAME)
-            ): str,
+            vol.Required(CONF_NAME, default=defaults.get(CONF_NAME, DEFAULT_NAME)): str,
             required_entity(CONF_OFFICIAL_ENERGY_ENTITY): _entity_selector(),
             required_entity(CONF_OFFICIAL_DATE_ENTITY): _entity_selector(),
             required_entity(CONF_LOCAL_ENERGY_ENTITY): _entity_selector(),
+            backup: _entity_selector(),
         }
     )
 
@@ -86,6 +98,8 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = self._validate(user_input)
             if not errors:
+                if not user_input.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY):
+                    user_input.pop(CONF_BACKUP_LOCAL_ENERGY_ENTITY, None)
                 user_input[CONF_NAME] = user_input[CONF_NAME].strip()
                 await self.async_set_unique_id(_entry_unique_id(user_input))
                 self._abort_if_unique_id_configured()
@@ -106,6 +120,8 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = self._validate(user_input)
             if not errors:
+                if not user_input.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY):
+                    user_input.pop(CONF_BACKUP_LOCAL_ENERGY_ENTITY, None)
                 unique_id = _entry_unique_id(user_input)
                 duplicate = next(
                     (
@@ -140,10 +156,23 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return {CONF_NAME: "invalid_name"}
         if data[CONF_OFFICIAL_ENERGY_ENTITY] == data[CONF_LOCAL_ENERGY_ENTITY]:
             return {"base": "sources_must_differ"}
+        backup_entity = data.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY)
+        if backup_entity and backup_entity in {
+            data[CONF_OFFICIAL_ENERGY_ENTITY],
+            data[CONF_LOCAL_ENERGY_ENTITY],
+        }:
+            return {"base": "sources_must_differ"}
         official = self.hass.states.get(data[CONF_OFFICIAL_ENERGY_ENTITY])
         official_date = self.hass.states.get(data[CONF_OFFICIAL_DATE_ENTITY])
-        local = self.hass.states.get(data[CONF_LOCAL_ENERGY_ENTITY])
-        if official is None or official_date is None or local is None:
+        local_entities = [data[CONF_LOCAL_ENERGY_ENTITY]]
+        if backup_entity:
+            local_entities.append(backup_entity)
+        local_states = [self.hass.states.get(entity_id) for entity_id in local_entities]
+        if (
+            official is None
+            or official_date is None
+            or any(state is None for state in local_states)
+        ):
             return {"base": "entity_not_found"}
         if _parse_date(official_date.state) is None:
             return {CONF_OFFICIAL_DATE_ENTITY: "invalid_date_entity"}
@@ -166,18 +195,29 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if official_hours is None and (
             source_entry is None or source_entry.domain != "edata"
         ):
-            return {
-                CONF_OFFICIAL_ENERGY_ENTITY: "official_completeness_unavailable"
-            }
-        if (
-            _energy_to_kwh(local.state, local.attributes.get(ATTR_UNIT_OF_MEASUREMENT))
-            is None
-        ):
-            return {CONF_LOCAL_ENERGY_ENTITY: "invalid_energy_entity"}
-        if local.attributes.get("device_class") != "energy":
-            return {CONF_LOCAL_ENERGY_ENTITY: "local_must_be_energy"}
-        if local.attributes.get("state_class") not in ("total", "total_increasing"):
-            return {CONF_LOCAL_ENERGY_ENTITY: "local_must_be_total"}
+            return {CONF_OFFICIAL_ENERGY_ENTITY: "official_completeness_unavailable"}
+        for entity_id, local in zip(local_entities, local_states, strict=True):
+            assert local is not None
+            field = (
+                CONF_LOCAL_ENERGY_ENTITY
+                if entity_id == data[CONF_LOCAL_ENERGY_ENTITY]
+                else CONF_BACKUP_LOCAL_ENERGY_ENTITY
+            )
+            if (
+                _energy_to_kwh(
+                    local.state,
+                    local.attributes.get(ATTR_UNIT_OF_MEASUREMENT),
+                )
+                is None
+            ):
+                return {field: "invalid_energy_entity"}
+            if local.attributes.get("device_class") != "energy":
+                return {field: "local_must_be_energy"}
+            if local.attributes.get("state_class") not in (
+                "total",
+                "total_increasing",
+            ):
+                return {field: "local_must_be_total"}
         return {}
 
     @staticmethod
@@ -240,6 +280,13 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
                     default=current.get(CONF_FROZEN_HOURS, DEFAULT_FROZEN_HOURS),
                 ): number(config(min=0.5, max=48, step=0.5, mode=mode)),
                 vol.Required(
+                    CONF_DAILY_ZERO_STREAK_HOURS,
+                    default=current.get(
+                        CONF_DAILY_ZERO_STREAK_HOURS,
+                        DEFAULT_DAILY_ZERO_STREAK_HOURS,
+                    ),
+                ): number(config(min=2, max=12, step=1, mode=mode)),
+                vol.Required(
                     CONF_MAX_OFFICIAL_DELAY_DAYS,
                     default=current.get(
                         CONF_MAX_OFFICIAL_DELAY_DAYS,
@@ -248,6 +295,4 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
                 ): number(config(min=1, max=30, step=1, mode=mode)),
             }
         )
-        return self.async_show_form(
-            step_id="init", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

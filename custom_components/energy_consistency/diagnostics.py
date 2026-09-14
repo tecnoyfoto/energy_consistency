@@ -8,21 +8,36 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.redact import async_redact_data
 
+from . import EnergyConsistencyConfigEntry
 from .const import (
+    CONF_BACKUP_LOCAL_ENERGY_ENTITY,
     CONF_LOCAL_ENERGY_ENTITY,
     CONF_NAME,
     CONF_OFFICIAL_DATE_ENTITY,
     CONF_OFFICIAL_ENERGY_ENTITY,
 )
-from . import EnergyConsistencyConfigEntry
 
 TO_REDACT_ENTRY = {
     CONF_NAME,
     CONF_OFFICIAL_ENERGY_ENTITY,
     CONF_OFFICIAL_DATE_ENTITY,
     CONF_LOCAL_ENERGY_ENTITY,
+    CONF_BACKUP_LOCAL_ENERGY_ENTITY,
 }
-TO_REDACT_RECORD = {"official_kwh", "local_kwh"}
+TO_REDACT_RECORD = {
+    "official_kwh",
+    "local_kwh",
+    "local_source_entity",
+    "primary_local_kwh",
+    "backup_local_kwh",
+}
+TO_REDACT_SNAPSHOT = {
+    "official_kwh",
+    "local_kwh",
+    "local_source_entity",
+    "primary_local_kwh",
+    "backup_local_kwh",
+}
 
 
 async def async_get_config_entry_diagnostics(
@@ -36,7 +51,7 @@ async def async_get_config_entry_diagnostics(
             "data": async_redact_data(dict(entry.data), TO_REDACT_ENTRY),
             "options": dict(entry.options),
         },
-        "snapshot": asdict(coordinator.data),
+        "snapshot": async_redact_data(asdict(coordinator.data), TO_REDACT_SNAPSHOT),
         "records": [
             async_redact_data(record.as_dict(), TO_REDACT_RECORD)
             for record in coordinator.records[-31:]

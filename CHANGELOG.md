@@ -2,6 +2,24 @@
 
 All notable changes to Energy Consistency are documented in this file.
 
+## [0.8.0] - 2026-09-14
+
+### Added
+
+- Optional prioritized backup local meter; local readings are selected and
+  never summed.
+- Automatic failover for incomplete, invalid, unavailable, or frozen primary
+  meter days.
+- A conservative data issue when two healthy complete meters disagree.
+- Configurable completed-day frozen detection.
+
+### Changed
+
+- Preserve verified history when local meters are added, removed, or reordered.
+- Store the selected meter, fallback reason, per-meter readings, coverage, and
+  zero-hour streaks with each new comparison.
+- Migrate existing single-meter configurations without losing records.
+
 ## [0.7.3] - 2026-07-31
 
 ### Fixed

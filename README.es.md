@@ -12,7 +12,7 @@ la causa de una diferencia.
 
 ## Estado actual
 
-La versión `0.8.0` es la versión preliminar pública actual. Ya funciona en una
+La versión `0.8.1` es la versión preliminar pública actual. Ya funciona en una
 instalación real de Home Assistant, dispone de pruebas automáticas, conserva el
 historial verificado después de los reinicios y rechaza deliberadamente los
 días parciales.
@@ -23,6 +23,8 @@ días parciales.
 - Un contador local principal y otro de respaldo opcional; nunca se suman.
 - Conmutación diaria si el contador principal está incompleto o congelado.
 - Cambio de contador y prioridad sin perder el historial verificado.
+- La reconfiguración sigue disponible aunque un contador configurado esté
+  temporalmente no disponible o en estado desconocido.
 - Comparación exacta de días naturales coincidentes.
 - Validación de días completos de 23, 24 y 25 horas por los cambios horarios.
 - Reconstrucción local mediante estadísticas horarias de Recorder.

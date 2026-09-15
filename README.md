@@ -12,7 +12,7 @@ the cause of a discrepancy.
 
 ## Current status
 
-Version `0.8.0` is the current public preview. It is already running in a real
+Version `0.8.1` is the current public preview. It is already running in a real
 Home Assistant installation, includes automated tests, preserves verified
 history across restarts, and deliberately rejects partial days.
 
@@ -22,6 +22,8 @@ history across restarts, and deliberately rejects partial days.
 - A primary local meter and an optional backup; their readings are never added.
 - Daily failover for incomplete or frozen primary-meter data.
 - Local-meter replacement and priority changes without losing verified history.
+- Reconfiguration remains available while a configured meter is temporarily
+  unavailable or unknown.
 - Exact comparison of matching local calendar days.
 - Complete 23, 24, and 25-hour day validation for daylight-saving changes.
 - Local reconstruction from hourly Recorder statistics.

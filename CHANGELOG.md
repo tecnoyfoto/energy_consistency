@@ -2,6 +2,15 @@
 
 All notable changes to Energy Consistency are documented in this file.
 
+## [0.8.1] - 2026-09-15
+
+### Fixed
+
+- Allow an existing local cumulative energy entity to be reconfigured while
+  its live state is temporarily `unavailable` or `unknown`. Its energy device
+  class and total state class are still validated, so a backup can be assigned
+  precisely while the primary meter is down.
+
 ## [0.8.0] - 2026-09-14
 
 ### Added

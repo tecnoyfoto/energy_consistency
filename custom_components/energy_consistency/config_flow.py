@@ -6,7 +6,11 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT
+from homeassistant.const import (
+    ATTR_UNIT_OF_MEASUREMENT,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import entity_registry as er
@@ -203,7 +207,7 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if entity_id == data[CONF_LOCAL_ENERGY_ENTITY]
                 else CONF_BACKUP_LOCAL_ENERGY_ENTITY
             )
-            if (
+            if local.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN) and (
                 _energy_to_kwh(
                     local.state,
                     local.attributes.get(ATTR_UNIT_OF_MEASUREMENT),

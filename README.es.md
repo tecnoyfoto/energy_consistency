@@ -12,7 +12,7 @@ la causa de una diferencia.
 
 ## Estado actual
 
-La versión `0.8.1` es la versión preliminar pública actual. Ya funciona en una
+La versión `0.9.0` es la versión preliminar pública actual. Ya funciona en una
 instalación real de Home Assistant, dispone de pruebas automáticas, conserva el
 historial verificado después de los reinicios y rechaza deliberadamente los
 días parciales.
@@ -21,7 +21,14 @@ días parciales.
 
 - Configuración y reconfiguración desde la interfaz de Home Assistant.
 - Un contador local principal y otro de respaldo opcional; nunca se suman.
+- Nombres editables e interruptores de inclusión para cada contador local.
+- Los contadores excluidos conservan su histórico y valores diarios, pero no
+  participan en la coherencia ni en el cambio automático.
+- Calibración opcional por contador, conservando por separado el valor bruto y
+  el ajustado.
 - Conmutación diaria si el contador principal está incompleto o congelado.
+- Un desacuerdo genera una advertencia y guarda el valor principal en vez de
+  descartar el día completo.
 - Cambio de contador y prioridad sin perder el historial verificado.
 - La reconfiguración sigue disponible aunque un contador configurado esté
   temporalmente no disponible o en estado desconocido.
@@ -105,6 +112,16 @@ nunca se suman.
 Cambiar el nombre, los contadores locales o su prioridad conserva el historial
 verificado. Cambiar una fuente oficial inicia un historial nuevo. Cada registro
 nuevo guarda qué contador local se utilizó y si hubo conmutación.
+
+Abre **Ajustes > Dispositivos y servicios > Coherencia energética > Configurar
+> Contadores locales** para seleccionar y nombrar cada contador, definir su
+factor de calibración o excluirlo de la coherencia. La integración también crea
+un interruptor de inclusión por contador. Apagarlo no desconecta el contador
+físico ni impide que Home Assistant continúe registrando su sensor.
+
+Los factores de calibración parten de `1,000`. Solo afectan al valor ajustado
+utilizado para la coherencia; el consumo diario bruto continúa disponible en el
+diagnóstico y en los informes CSV.
 
 ## Modelo de estados
 

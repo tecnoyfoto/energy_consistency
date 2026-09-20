@@ -17,7 +17,7 @@ _VALID_DAY_REASONS = {
     "local_sensor_may_be_frozen",
     "local_sources_disagree",
 }
-COMPARISON_ALGORITHM_VERSION = 2
+COMPARISON_ALGORITHM_VERSION = 3
 
 
 @dataclass(slots=True)
@@ -40,7 +40,9 @@ class DailyComparison:
     critical_percent: float | None = None
     min_coverage_percent: float | None = None
     local_source_entity: str | None = None
+    local_source_name: str | None = None
     local_source_role: str | None = None
+    local_selection_reason: str | None = None
     fallback_used: bool = False
     fallback_reason: str | None = None
     primary_local_kwh: float | None = None
@@ -49,6 +51,17 @@ class DailyComparison:
     backup_coverage_percent: float | None = None
     primary_zero_streak_hours: int | None = None
     backup_zero_streak_hours: int | None = None
+    primary_local_name: str | None = None
+    backup_local_name: str | None = None
+    primary_local_enabled: bool = True
+    backup_local_enabled: bool | None = None
+    primary_calibration_factor: float = 1.0
+    backup_calibration_factor: float | None = None
+    primary_adjusted_kwh: float | None = None
+    backup_adjusted_kwh: float | None = None
+    local_sources_disagree: bool = False
+    local_sources_difference_kwh: float | None = None
+    local_sources_difference_percent: float | None = None
     algorithm_version: int = COMPARISON_ALGORITHM_VERSION
 
     def as_dict(self) -> dict[str, Any]:
@@ -140,7 +153,17 @@ class DailyComparison:
                 if value.get("local_source_entity")
                 else None
             ),
+            local_source_name=(
+                str(value["local_source_name"])
+                if value.get("local_source_name")
+                else None
+            ),
             local_source_role=_optional_source_role(value.get("local_source_role")),
+            local_selection_reason=(
+                str(value["local_selection_reason"])
+                if value.get("local_selection_reason")
+                else None
+            ),
             fallback_used=bool(value.get("fallback_used", False)),
             fallback_reason=(
                 str(value["fallback_reason"]) if value.get("fallback_reason") else None
@@ -154,6 +177,41 @@ class DailyComparison:
             ),
             backup_zero_streak_hours=optional_non_negative_int(
                 "backup_zero_streak_hours"
+            ),
+            primary_local_name=(
+                str(value["primary_local_name"])
+                if value.get("primary_local_name")
+                else None
+            ),
+            backup_local_name=(
+                str(value["backup_local_name"])
+                if value.get("backup_local_name")
+                else None
+            ),
+            primary_local_enabled=bool(value.get("primary_local_enabled", True)),
+            backup_local_enabled=(
+                bool(value["backup_local_enabled"])
+                if value.get("backup_local_enabled") is not None
+                else None
+            ),
+            primary_calibration_factor=(
+                optional_number("primary_calibration_factor", non_negative=True) or 1.0
+            ),
+            backup_calibration_factor=optional_number(
+                "backup_calibration_factor", non_negative=True
+            ),
+            primary_adjusted_kwh=optional_number(
+                "primary_adjusted_kwh", non_negative=True
+            ),
+            backup_adjusted_kwh=optional_number(
+                "backup_adjusted_kwh", non_negative=True
+            ),
+            local_sources_disagree=bool(value.get("local_sources_disagree", False)),
+            local_sources_difference_kwh=optional_number(
+                "local_sources_difference_kwh"
+            ),
+            local_sources_difference_percent=optional_number(
+                "local_sources_difference_percent"
             ),
             algorithm_version=algorithm_version,
         )
@@ -183,10 +241,23 @@ class CoordinatorSnapshot:
     pending_sources: tuple[str, ...] = ()
     local_source_entity: str | None = None
     local_source_role: str | None = None
+    local_selection_reason: str | None = None
     fallback_used: bool = False
     fallback_reason: str | None = None
     primary_local_kwh: float | None = None
     backup_local_kwh: float | None = None
+    local_source_name: str | None = None
+    primary_local_name: str | None = None
+    backup_local_name: str | None = None
+    primary_local_enabled: bool = True
+    backup_local_enabled: bool | None = None
+    primary_calibration_factor: float = 1.0
+    backup_calibration_factor: float | None = None
+    primary_adjusted_kwh: float | None = None
+    backup_adjusted_kwh: float | None = None
+    local_sources_disagree: bool = False
+    local_sources_difference_kwh: float | None = None
+    local_sources_difference_percent: float | None = None
 
 
 def _optional_source_role(value: Any) -> str | None:

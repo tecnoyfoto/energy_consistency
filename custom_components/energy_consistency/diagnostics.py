@@ -11,10 +11,12 @@ from homeassistant.helpers.redact import async_redact_data
 from . import EnergyConsistencyConfigEntry
 from .const import (
     CONF_BACKUP_LOCAL_ENERGY_ENTITY,
+    CONF_BACKUP_LOCAL_NAME,
     CONF_LOCAL_ENERGY_ENTITY,
     CONF_NAME,
     CONF_OFFICIAL_DATE_ENTITY,
     CONF_OFFICIAL_ENERGY_ENTITY,
+    CONF_PRIMARY_LOCAL_NAME,
 )
 
 TO_REDACT_ENTRY = {
@@ -23,6 +25,8 @@ TO_REDACT_ENTRY = {
     CONF_OFFICIAL_DATE_ENTITY,
     CONF_LOCAL_ENERGY_ENTITY,
     CONF_BACKUP_LOCAL_ENERGY_ENTITY,
+    CONF_PRIMARY_LOCAL_NAME,
+    CONF_BACKUP_LOCAL_NAME,
 }
 TO_REDACT_RECORD = {
     "official_kwh",
@@ -30,6 +34,11 @@ TO_REDACT_RECORD = {
     "local_source_entity",
     "primary_local_kwh",
     "backup_local_kwh",
+    "primary_adjusted_kwh",
+    "backup_adjusted_kwh",
+    "local_source_name",
+    "primary_local_name",
+    "backup_local_name",
 }
 TO_REDACT_SNAPSHOT = {
     "official_kwh",
@@ -37,6 +46,11 @@ TO_REDACT_SNAPSHOT = {
     "local_source_entity",
     "primary_local_kwh",
     "backup_local_kwh",
+    "primary_adjusted_kwh",
+    "backup_adjusted_kwh",
+    "local_source_name",
+    "primary_local_name",
+    "backup_local_name",
 }
 
 

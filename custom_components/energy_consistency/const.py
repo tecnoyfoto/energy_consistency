@@ -5,13 +5,19 @@ from __future__ import annotations
 from datetime import timedelta
 
 DOMAIN = "energy_consistency"
-PLATFORMS = ["sensor"]
-FRONTEND_VERSION = "0.8.1"
+PLATFORMS = ["sensor", "switch"]
+FRONTEND_VERSION = "0.9.0"
 
 CONF_OFFICIAL_ENERGY_ENTITY = "official_energy_entity"
 CONF_OFFICIAL_DATE_ENTITY = "official_date_entity"
 CONF_LOCAL_ENERGY_ENTITY = "local_energy_entity"
 CONF_BACKUP_LOCAL_ENERGY_ENTITY = "backup_local_energy_entity"
+CONF_PRIMARY_LOCAL_NAME = "primary_local_name"
+CONF_BACKUP_LOCAL_NAME = "backup_local_name"
+CONF_PRIMARY_LOCAL_ENABLED = "primary_local_enabled"
+CONF_BACKUP_LOCAL_ENABLED = "backup_local_enabled"
+CONF_PRIMARY_CALIBRATION_FACTOR = "primary_calibration_factor"
+CONF_BACKUP_CALIBRATION_FACTOR = "backup_calibration_factor"
 CONF_NAME = "name"
 
 CONF_GREEN_ABS_KWH = "green_abs_kwh"
@@ -25,6 +31,11 @@ CONF_MAX_OFFICIAL_DELAY_DAYS = "max_official_delay_days"
 CONF_MIN_COVERAGE_PERCENT = "min_coverage_percent"
 
 DEFAULT_NAME = "Energy Consistency"
+DEFAULT_PRIMARY_LOCAL_NAME = "Primary local meter"
+DEFAULT_BACKUP_LOCAL_NAME = "Backup local meter"
+DEFAULT_PRIMARY_LOCAL_ENABLED = True
+DEFAULT_BACKUP_LOCAL_ENABLED = True
+DEFAULT_CALIBRATION_FACTOR = 1.0
 DEFAULT_GREEN_ABS_KWH = 0.5
 DEFAULT_GREEN_PERCENT = 5.0
 DEFAULT_CRITICAL_ABS_KWH = 2.0

@@ -12,7 +12,7 @@ the cause of a discrepancy.
 
 ## Current status
 
-Version `0.8.1` is the current public preview. It is already running in a real
+Version `0.9.0` is the current public preview. It is already running in a real
 Home Assistant installation, includes automated tests, preserves verified
 history across restarts, and deliberately rejects partial days.
 
@@ -20,7 +20,13 @@ history across restarts, and deliberately rejects partial days.
 
 - Configuration and reconfiguration from the Home Assistant UI.
 - A primary local meter and an optional backup; their readings are never added.
+- Editable names and inclusion switches for every configured local meter.
+- Excluded meters keep their Recorder history and daily audit values but do not
+  participate in comparison or failover.
+- Optional per-meter calibration with raw and adjusted values kept separately.
 - Daily failover for incomplete or frozen primary-meter data.
+- A disagreement warns and records the primary value instead of discarding the
+  whole day.
 - Local-meter replacement and priority changes without losing verified history.
 - Reconfiguration remains available while a configured meter is temporarily
   unavailable or unknown.
@@ -102,6 +108,16 @@ backup replaces the primary only when needed; their readings are never added.
 Changing the display name, local meters, or their priority preserves verified
 history. Changing either official source starts a new history. Every new record
 stores which local meter was selected and whether failover was used.
+
+Open **Settings > Devices & services > Energy Consistency > Configure > Local
+meters** to select and name each meter, set its calibration factor, or exclude
+it from coherence. The integration also creates one inclusion switch per local
+meter. Turning a switch off does not disable the physical meter and never stops
+Home Assistant from recording its sensor.
+
+Calibration factors default to `1.000`. They only affect the adjusted value used
+for coherence; raw daily consumption remains available in diagnostics and CSV
+reports.
 
 ## Status model
 

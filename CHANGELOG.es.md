@@ -2,6 +2,29 @@
 
 Este archivo documenta los cambios destacados de Energy Consistency.
 
+## [0.9.0] - 2026-09-20
+
+### Añadido
+
+- Nombres editables e interruptores persistentes de inclusión para los dos
+  contadores locales.
+- Pantalla visible **Configurar > Contadores locales** con selección, inclusión
+  y calibración de cada fuente.
+- Calibración opcional por contador, conservando valores diarios brutos y
+  ajustados.
+- Motivo de selección, desacuerdo, diferencia entre fuentes, nombres, estado de
+  inclusión y calibración en diagnósticos e informes CSV.
+
+### Cambiado
+
+- El desacuerdo entre dos contadores completos e incluidos conserva la lectura
+  principal, guarda el día y muestra una advertencia en vez de bloquearlo como
+  problema de datos.
+- Excluir una fuente solo afecta a la coherencia y al respaldo. El histórico de
+  Recorder y los valores brutos diarios permanecen intactos.
+- La insignia interactiva muestra nombres, valores brutos y ajustados, inclusión,
+  diferencia entre fuentes y motivo de selección.
+
 ## [0.8.0] - 2026-09-14
 
 ### Añadido

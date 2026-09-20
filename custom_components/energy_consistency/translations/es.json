@@ -10,13 +10,17 @@
           "official_energy_entity": "Consumo diario oficial",
           "official_date_entity": "Fecha de la lectura oficial",
           "local_energy_entity": "Energía acumulada local principal",
-          "backup_local_energy_entity": "Energía acumulada local de respaldo (opcional)"
+          "primary_local_name": "Nombre del contador principal",
+          "backup_local_energy_entity": "Energía acumulada local de respaldo (opcional)",
+          "backup_local_name": "Nombre del contador de respaldo"
         },
         "data_description": {
           "official_energy_entity": "Energía consumida durante el último día completo publicado por la distribuidora.",
           "official_date_entity": "Entidad cuyo estado contiene la fecha o marca temporal representada por el valor oficial.",
           "local_energy_entity": "Contador preferido de tipo total o total creciente. Se utiliza siempre que sus datos diarios sean válidos.",
-          "backup_local_energy_entity": "Se utiliza en lugar del principal, nunca se suma, cuando el día principal está incompleto o congelado."
+          "primary_local_name": "Etiqueta editable que aparecerá en diagnósticos e informes.",
+          "backup_local_energy_entity": "Se utiliza en lugar del principal, nunca se suma, cuando el día principal está incompleto o congelado.",
+          "backup_local_name": "Etiqueta editable que aparecerá en diagnósticos e informes."
         }
       },
       "reconfigure": {
@@ -27,13 +31,17 @@
           "official_energy_entity": "Consumo diario oficial",
           "official_date_entity": "Fecha de la lectura oficial",
           "local_energy_entity": "Energía acumulada local principal",
-          "backup_local_energy_entity": "Energía acumulada local de respaldo (opcional)"
+          "primary_local_name": "Nombre del contador principal",
+          "backup_local_energy_entity": "Energía acumulada local de respaldo (opcional)",
+          "backup_local_name": "Nombre del contador de respaldo"
         },
         "data_description": {
           "official_energy_entity": "Energía consumida durante el último día completo publicado por la fuente oficial.",
           "official_date_entity": "Entidad cuyo estado contiene la fecha o marca temporal representada por el valor oficial.",
           "local_energy_entity": "Contador preferido de tipo total o total creciente. Intercámbialo con el respaldo para cambiar la prioridad.",
-          "backup_local_energy_entity": "Respaldo opcional. Déjalo vacío cuando solo haya un contador. Los valores nunca se suman."
+          "primary_local_name": "Etiqueta editable que aparecerá en diagnósticos e informes.",
+          "backup_local_energy_entity": "Respaldo opcional. Déjalo vacío cuando solo haya un contador. Los valores nunca se suman.",
+          "backup_local_name": "Etiqueta editable que aparecerá en diagnósticos e informes."
         }
       }
     },
@@ -56,6 +64,33 @@
   "options": {
     "step": {
       "init": {
+        "title": "Configuración de Coherencia energética",
+        "menu_options": {
+          "sources": "Contadores locales",
+          "thresholds": "Márgenes de comparación y salud"
+        }
+      },
+      "sources": {
+        "title": "Contadores locales",
+        "description": "Selecciona, nombra, incluye y, si es necesario, calibra cada contador. Excluirlo nunca impide que Home Assistant siga registrando sus datos.",
+        "data": {
+          "local_energy_entity": "Energía acumulada local principal",
+          "primary_local_name": "Nombre del contador principal",
+          "primary_local_enabled": "Incluir el contador principal en la coherencia",
+          "primary_calibration_factor": "Factor de calibración del principal",
+          "backup_local_energy_entity": "Energía acumulada local de respaldo (opcional)",
+          "backup_local_name": "Nombre del contador de respaldo",
+          "backup_local_enabled": "Incluir el contador de respaldo en la coherencia",
+          "backup_calibration_factor": "Factor de calibración del respaldo"
+        },
+        "data_description": {
+          "primary_local_enabled": "Desactivarlo conserva los datos brutos, pero excluye el contador de las comparaciones y del cambio automático.",
+          "backup_local_enabled": "Desactivarlo conserva los datos brutos, pero excluye el contador de las comparaciones y del cambio automático.",
+          "primary_calibration_factor": "Solo multiplica el valor usado para coherencia. El valor bruto permanece visible y almacenado.",
+          "backup_calibration_factor": "Solo multiplica el valor usado para coherencia. El valor bruto permanece visible y almacenado."
+        }
+      },
+      "thresholds": {
         "title": "Márgenes de comparación y salud",
         "description": "El estado crítico es deliberadamente conservador y exige varios días completos con desviaciones repetidas.",
         "data": {
@@ -75,6 +110,11 @@
     }
   },
   "entity": {
+    "switch": {
+      "include_local_source": {
+        "name": "Incluir {source_name} en la coherencia"
+      }
+    },
     "sensor": {
       "status": {"name": "Estado", "state": {"ok": "Correcto", "learning": "Aprendiendo", "waiting": "Esperando datos oficiales", "data_issue": "Problema de datos", "warning": "Revisar", "critical": "Crítico"}},
       "official_energy": {"name": "Energía oficial"},

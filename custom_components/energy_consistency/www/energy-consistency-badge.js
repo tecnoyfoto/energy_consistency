@@ -21,6 +21,16 @@ const COPY = {
     localSource: "Contador utilizado",
     primarySource: "Principal",
     backupSource: "Respaldo",
+    included: "incluido",
+    excluded: "excluido",
+    rawValue: "bruto",
+    adjustedValue: "ajustado",
+    sourceDifference: "Diferencia entre contadores",
+    selectionReason: "Selección local",
+    primary_selected: "Se utilizó el contador principal.",
+    backup_selected: "Se utilizó el respaldo porque el principal no era válido.",
+    backup_selected_primary_excluded: "Se utilizó el respaldo porque el principal está excluido.",
+    primary_selected_sources_disagree: "Se utilizó el principal y se conservó la advertencia de desacuerdo.",
     fallbackActive: "Se utilizó el contador de respaldo porque el principal no era fiable.",
     officialHours: "Horas oficiales recibidas",
     pendingOfficialHours: "Horas oficiales pendientes",
@@ -45,7 +55,8 @@ const COPY = {
     waiting_for_local_statistics: "Recorder todavía no dispone de las estadísticas locales.",
     waiting_for_complete_official_day: "La fuente oficial todavía no ha publicado todas las horas del día.",
     invalid_local_value: "El valor local no es un número de energía válido.",
-    local_sources_disagree: "Los dos contadores locales tienen datos completos pero no coinciden entre sí.",
+    local_sources_disagree: "Los dos contadores locales tienen datos completos pero no coinciden. Se ha guardado el valor del contador principal y se mantiene esta advertencia.",
+    no_local_source_included: "No hay ningún contador local incluido en la coherencia.",
     cachedResult: "Se mantiene el último resultado verificado del {date} mientras las fuentes terminan de recuperarse.",
     validDays: "días válidos",
     noData: "Sin datos",
@@ -61,6 +72,16 @@ const COPY = {
     localSource: "Meter used",
     primarySource: "Primary",
     backupSource: "Backup",
+    included: "included",
+    excluded: "excluded",
+    rawValue: "raw",
+    adjustedValue: "adjusted",
+    sourceDifference: "Difference between meters",
+    selectionReason: "Local selection",
+    primary_selected: "The primary meter was used.",
+    backup_selected: "The backup was used because the primary was not valid.",
+    backup_selected_primary_excluded: "The backup was used because the primary is excluded.",
+    primary_selected_sources_disagree: "The primary was used and the disagreement warning was preserved.",
     fallbackActive: "The backup meter was used because the primary was not reliable.",
     officialHours: "Official hours received",
     pendingOfficialHours: "Pending official hours",
@@ -85,7 +106,8 @@ const COPY = {
     waiting_for_local_statistics: "Recorder does not have the local statistics yet.",
     waiting_for_complete_official_day: "The official source has not published every hour of the day yet.",
     invalid_local_value: "The local value is not a valid energy number.",
-    local_sources_disagree: "Both local meters have complete data but disagree with each other.",
+    local_sources_disagree: "Both local meters have complete data but disagree. The primary value was saved and this warning remains visible.",
+    no_local_source_included: "No local meter is included in coherence.",
     cachedResult: "Keeping the last verified result from {date} while the sources finish recovering.",
     validDays: "valid days",
     noData: "No data",
@@ -237,8 +259,12 @@ class EnergyConsistencyBadge extends HTMLElement {
     const selected = recentComparisons.find((row) => row.date === this._selectedComparisonDate);
     if (this._selectedComparisonDate && !selected) this._selectedComparisonDate = null;
     const detail = selected || attrs;
-    const reasonKey = String(detail.reason || "").split(":")[0];
-    const status = selected?.status || stateObj?.state || "data_issue";
+    const reasonKey = detail.local_sources_disagree
+      ? "local_sources_disagree"
+      : String(detail.reason || "").split(":")[0];
+    const status = selected?.local_sources_disagree && selected.status !== "critical"
+      ? "warning"
+      : selected?.status || stateObj?.state || "data_issue";
     const difference = detail.difference_kwh == null ? null : Number(detail.difference_kwh);
     const detailVisual = STATUS_STYLE[status] || visual;
     const number = (value, digits = 2) => value == null || Number.isNaN(Number(value)) ? text.noData : new Intl.NumberFormat(lang, { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(Number(value));
@@ -262,10 +288,56 @@ class EnergyConsistencyBadge extends HTMLElement {
       [text.difference, `${difference > 0 ? "+" : ""}${number(detail.difference_kwh)} kWh (${difference > 0 ? "+" : ""}${number(detail.difference_percent, 1)} %)`],
       [text.coverage, `${number(detail.coverage_percent, 1)} %`],
     ];
-    if (detail.local_source_role) {
+    if (detail.local_source_role || detail.local_source_name) {
       metrics.push([
         text.localSource,
-        detail.local_source_role === "backup" ? text.backupSource : text.primarySource,
+        detail.local_source_name || (detail.local_source_role === "backup" ? text.backupSource : text.primarySource),
+      ]);
+    }
+    if (detail.local_selection_reason) {
+      metrics.push([
+        text.selectionReason,
+        text[detail.local_selection_reason] || detail.local_selection_reason,
+      ]);
+    }
+    const sourceValue = (name, raw, adjusted, factor, enabled) => {
+      const inclusion = enabled === false ? text.excluded : text.included;
+      if (raw == null) return `${name}: ${text.noData} · ${inclusion}`;
+      const rawText = `${number(raw)} kWh ${text.rawValue}`;
+      const adjustedText = factor != null && Math.abs(Number(factor) - 1) > 0.000001
+        ? ` → ${number(adjusted)} kWh ${text.adjustedValue} (×${number(factor, 3)})`
+        : "";
+      return `${name}: ${rawText}${adjustedText} · ${inclusion}`;
+    };
+    if (detail.primary_local_kwh != null || detail.primary_local_name) {
+      metrics.push([
+        text.primarySource,
+        sourceValue(
+          detail.primary_local_name || text.primarySource,
+          detail.primary_local_kwh,
+          detail.primary_adjusted_kwh,
+          detail.primary_calibration_factor,
+          detail.primary_local_enabled,
+        ),
+      ]);
+    }
+    if (detail.backup_local_kwh != null || detail.backup_local_name) {
+      metrics.push([
+        text.backupSource,
+        sourceValue(
+          detail.backup_local_name || text.backupSource,
+          detail.backup_local_kwh,
+          detail.backup_adjusted_kwh,
+          detail.backup_calibration_factor,
+          detail.backup_local_enabled,
+        ),
+      ]);
+    }
+    if (detail.local_sources_difference_kwh != null) {
+      const sourceDelta = Number(detail.local_sources_difference_kwh);
+      metrics.push([
+        text.sourceDifference,
+        `${sourceDelta > 0 ? "+" : ""}${number(sourceDelta)} kWh (${sourceDelta > 0 ? "+" : ""}${number(detail.local_sources_difference_percent, 1)} %)`,
       ]);
     }
     if (detail.official_hours != null && detail.expected_official_hours != null) {
@@ -302,7 +374,7 @@ class EnergyConsistencyBadge extends HTMLElement {
     for (const row of recentComparisons.slice().reverse()) {
       const rowElement = document.createElement("button"); rowElement.type = "button";
       rowElement.className = `history-row${row.date === this._selectedComparisonDate ? " selected" : ""}`;
-      const rowVisual = STATUS_STYLE[row.status] || STATUS_STYLE.unknown;
+      const rowVisual = STATUS_STYLE[row.local_sources_disagree && row.status !== "critical" ? "warning" : row.status] || STATUS_STYLE.unknown;
       rowElement.style.setProperty("--row-color", rowVisual.color);
       rowElement.setAttribute("aria-pressed", row.date === this._selectedComparisonDate ? "true" : "false");
       rowElement.setAttribute("aria-label", `${text.selectDay}: ${row.date}`);
@@ -314,7 +386,9 @@ class EnergyConsistencyBadge extends HTMLElement {
         const currentFormatted = currentState ? this._hass.formatEntityState?.(currentState) || currentState.state : "No disponible";
         this._renderDiagnosis(currentState, currentFormatted, currentVisual);
       });
-      const dateElement = document.createElement("span"); dateElement.textContent = row.date;
+      const dateElement = document.createElement("span");
+      const sourceLabel = row.local_source_name || (row.local_source_role === "backup" ? text.backupSource : text.primarySource);
+      dateElement.textContent = row.local_source_role ? `${row.date} · ${sourceLabel}` : row.date;
       const deltaElement = document.createElement("span"); deltaElement.className = "delta";
       deltaElement.textContent = row.difference_kwh == null ? text.noData : `${row.difference_kwh > 0 ? "+" : ""}${number(row.difference_kwh)} kWh`;
       const dot = document.createElement("span"); dot.className = "dot"; dot.title = row.status;

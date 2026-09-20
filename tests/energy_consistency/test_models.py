@@ -66,6 +66,19 @@ def test_new_record_round_trip_preserves_audit_metadata() -> None:
         backup_coverage_percent=100,
         primary_zero_streak_hours=3,
         backup_zero_streak_hours=0,
+        local_source_name="Airzone",
+        local_selection_reason="backup_selected",
+        primary_local_name="Main meter",
+        backup_local_name="Airzone",
+        primary_local_enabled=True,
+        backup_local_enabled=True,
+        primary_calibration_factor=1.0,
+        backup_calibration_factor=1.087,
+        primary_adjusted_kwh=9.71,
+        backup_adjusted_kwh=12.555,
+        local_sources_disagree=True,
+        local_sources_difference_kwh=2.845,
+        local_sources_difference_percent=29.3,
     )
     restored = DailyComparison.from_dict(original.as_dict())
     assert restored == original

@@ -6,6 +6,8 @@ from pathlib import Path
 import sys
 import types
 
+import pytest
+
 ROOT = Path(__file__).parents[2]
 CUSTOM_COMPONENTS = ROOT / "custom_components"
 COMPONENT = CUSTOM_COMPONENTS / "energy_consistency"
@@ -100,10 +102,77 @@ def test_backup_replaces_primary_frozen_for_three_hours() -> None:
     assert result.fallback_reason == "primary_frozen"
 
 
-def test_two_healthy_disagreeing_meters_are_not_cherry_picked() -> None:
+def test_two_healthy_disagreeing_meters_keep_priority_and_raise_warning() -> None:
     result = select(reading("primary", 10), reading("backup", 12))
+    assert result.reading is not None
+    assert result.reading.role == "primary"
+    assert result.reason == "primary_selected_sources_disagree"
+    assert result.sources_disagree is True
+
+
+def test_excluded_backup_is_still_read_but_not_compared() -> None:
+    backup = reading("backup", 12)
+    backup = LocalDayReading(
+        entity_id=backup.entity_id,
+        role=backup.role,
+        kwh=backup.kwh,
+        coverage_percent=backup.coverage_percent,
+        included=False,
+    )
+    result = select(reading("primary", 10), backup)
+    assert result.reading is not None
+    assert result.reading.role == "primary"
+    assert result.sources_disagree is False
+
+
+def test_excluded_primary_promotes_enabled_backup_without_failure() -> None:
+    primary = LocalDayReading(
+        entity_id="sensor.primary",
+        role="primary",
+        kwh=10,
+        coverage_percent=100,
+        included=False,
+    )
+    result = select(primary, reading("backup", 12))
+    assert result.reading is not None
+    assert result.reading.role == "backup"
+    assert result.fallback_used is False
+    assert result.fallback_reason == "primary_excluded"
+
+
+def test_calibration_is_used_for_agreement_without_changing_raw_value() -> None:
+    backup = LocalDayReading(
+        entity_id="sensor.backup",
+        role="backup",
+        kwh=9.2,
+        coverage_percent=100,
+        calibration_factor=1.087,
+    )
+    result = select(reading("primary", 10), backup)
+    assert result.reading is not None
+    assert result.sources_disagree is False
+    assert backup.kwh == 9.2
+    assert backup.adjusted_kwh == pytest.approx(10.0004)
+
+
+def test_both_excluded_sources_report_configuration_issue() -> None:
+    primary = LocalDayReading(
+        entity_id="sensor.primary",
+        role="primary",
+        kwh=10,
+        coverage_percent=100,
+        included=False,
+    )
+    backup = LocalDayReading(
+        entity_id="sensor.backup",
+        role="backup",
+        kwh=12,
+        coverage_percent=100,
+        included=False,
+    )
+    result = select(primary, backup)
     assert result.reading is None
-    assert result.reason == "local_sources_disagree"
+    assert result.reason == "no_local_source_included"
 
 
 def test_healthy_primary_ignores_frozen_backup() -> None:

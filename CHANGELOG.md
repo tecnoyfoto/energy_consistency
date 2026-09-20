@@ -2,6 +2,27 @@
 
 All notable changes to Energy Consistency are documented in this file.
 
+## [0.9.0] - 2026-09-20
+
+### Added
+
+- Editable names and persistent inclusion switches for both local meters.
+- A clearly visible **Configure > Local meters** screen with source selection,
+  inclusion, and calibration controls.
+- Optional per-source calibration while retaining raw and adjusted daily values.
+- Per-day selection reason, source disagreement, source delta, names, inclusion
+  state, and calibration metadata in diagnostics and CSV reports.
+
+### Changed
+
+- A disagreement between two complete enabled meters now keeps the primary
+  reading, stores the day, and raises a review warning instead of blocking it as
+  a data issue.
+- Excluding a source affects only coherence and failover. Recorder history and
+  raw daily audit values remain untouched.
+- The interactive badge shows configured names, raw and adjusted readings,
+  inclusion state, source delta, and the reason for local-source selection.
+
 ## [0.8.1] - 2026-09-15
 
 ### Fixed

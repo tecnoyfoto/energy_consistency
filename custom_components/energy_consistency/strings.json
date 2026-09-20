@@ -10,13 +10,17 @@
           "official_energy_entity": "Official daily energy",
           "official_date_entity": "Date of the official reading",
           "local_energy_entity": "Primary local cumulative energy",
+          "primary_local_name": "Primary meter name",
           "backup_local_energy_entity": "Backup local cumulative energy (optional)"
+          ,"backup_local_name": "Backup meter name"
         },
         "data_description": {
           "official_energy_entity": "Energy consumed on the latest complete day reported by the distributor.",
           "official_date_entity": "Entity whose state contains the date or timestamp represented by the official value.",
           "local_energy_entity": "Preferred total or total-increasing meter. Its value is used whenever its daily data is healthy.",
+          "primary_local_name": "Editable label shown in diagnostics and reports.",
           "backup_local_energy_entity": "Used instead of, never added to, the primary when the primary day is incomplete or frozen."
+          ,"backup_local_name": "Editable label shown in diagnostics and reports."
         }
       },
       "reconfigure": {
@@ -27,13 +31,17 @@
           "official_energy_entity": "Official daily energy",
           "official_date_entity": "Date of the official reading",
           "local_energy_entity": "Primary local cumulative energy",
+          "primary_local_name": "Primary meter name",
           "backup_local_energy_entity": "Backup local cumulative energy (optional)"
+          ,"backup_local_name": "Backup meter name"
         },
         "data_description": {
           "official_energy_entity": "Energy consumed on the latest complete day reported by the official source.",
           "official_date_entity": "Entity whose state contains the date or timestamp represented by the official value.",
           "local_energy_entity": "Preferred total or total-increasing meter. Swap this with the backup to change priority.",
+          "primary_local_name": "Editable label shown in diagnostics and reports.",
           "backup_local_energy_entity": "Optional fallback. Leave empty when only one meter is installed. Values are never summed."
+          ,"backup_local_name": "Editable label shown in diagnostics and reports."
         }
       }
     },
@@ -56,6 +64,33 @@
   "options": {
     "step": {
       "init": {
+        "title": "Energy Consistency settings",
+        "menu_options": {
+          "sources": "Local meters",
+          "thresholds": "Comparison and health thresholds"
+        }
+      },
+      "sources": {
+        "title": "Local meters",
+        "description": "Choose, name, include, and optionally calibrate each local meter. Excluding a meter never stops Home Assistant from recording it.",
+        "data": {
+          "local_energy_entity": "Primary local cumulative energy",
+          "primary_local_name": "Primary meter name",
+          "primary_local_enabled": "Include primary meter in coherence",
+          "primary_calibration_factor": "Primary calibration factor",
+          "backup_local_energy_entity": "Backup local cumulative energy (optional)",
+          "backup_local_name": "Backup meter name",
+          "backup_local_enabled": "Include backup meter in coherence",
+          "backup_calibration_factor": "Backup calibration factor"
+        },
+        "data_description": {
+          "primary_local_enabled": "When disabled, raw data remains recorded but this meter is ignored for comparisons and failover.",
+          "backup_local_enabled": "When disabled, raw data remains recorded but this meter is ignored for comparisons and failover.",
+          "primary_calibration_factor": "Multiplies only the value used for coherence. The raw value remains visible and stored.",
+          "backup_calibration_factor": "Multiplies only the value used for coherence. The raw value remains visible and stored."
+        }
+      },
+      "thresholds": {
         "title": "Comparison and health thresholds",
         "description": "Critical status is deliberately conservative and requires repeated complete days.",
         "data": {
@@ -75,6 +110,11 @@
     }
   },
   "entity": {
+    "switch": {
+      "include_local_source": {
+        "name": "Include {source_name} in coherence"
+      }
+    },
     "sensor": {
       "status": {
         "name": "Status",

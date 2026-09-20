@@ -16,6 +16,9 @@ class LocalDayReading:
     coverage_percent: float
     zero_streak_hours: int = 0
     error: str | None = None
+    name: str | None = None
+    included: bool = True
+    calibration_factor: float = 1.0
 
     @property
     def complete(self) -> bool:
@@ -29,6 +32,13 @@ class LocalDayReading:
             and self.coverage_percent >= 100.0
         )
 
+    @property
+    def adjusted_kwh(self) -> float | None:
+        """Return the calibrated value without altering the raw measurement."""
+        if self.kwh is None:
+            return None
+        return self.kwh * self.calibration_factor
+
 
 @dataclass(frozen=True, slots=True)
 class LocalSourceSelection:
@@ -38,6 +48,7 @@ class LocalSourceSelection:
     reason: str
     fallback_used: bool = False
     fallback_reason: str | None = None
+    sources_disagree: bool = False
 
 
 def readings_agree(
@@ -48,10 +59,10 @@ def readings_agree(
     relative_tolerance_percent: float,
 ) -> bool:
     """Return whether two complete meters agree within either tolerance."""
-    if first.kwh is None or second.kwh is None:
+    if first.adjusted_kwh is None or second.adjusted_kwh is None:
         return False
-    difference = abs(first.kwh - second.kwh)
-    reference = max(first.kwh, second.kwh)
+    difference = abs(first.adjusted_kwh - second.adjusted_kwh)
+    reference = max(first.adjusted_kwh, second.adjusted_kwh)
     relative_limit = reference * relative_tolerance_percent / 100
     return difference <= max(absolute_tolerance_kwh, relative_limit)
 
@@ -65,19 +76,42 @@ def select_local_source(
     agreement_percent: float,
 ) -> LocalSourceSelection:
     """Choose one meter by priority without ever combining their values."""
+    if not primary.included:
+        if backup is None or not backup.included:
+            return LocalSourceSelection(None, "no_local_source_included")
+        if backup.complete and backup.zero_streak_hours < zero_streak_limit_hours:
+            return LocalSourceSelection(
+                backup,
+                "backup_selected_primary_excluded",
+                fallback_reason="primary_excluded",
+            )
+        return LocalSourceSelection(
+            None,
+            (
+                "local_sensor_may_be_frozen"
+                if backup.complete
+                else backup.error or "backup_incomplete"
+            ),
+        )
+
+    eligible_backup = backup if backup is not None and backup.included else None
     primary_stalled = (
         primary.complete and primary.zero_streak_hours >= zero_streak_limit_hours
     )
     backup_stalled = (
-        backup is not None
-        and backup.complete
-        and backup.zero_streak_hours >= zero_streak_limit_hours
+        eligible_backup is not None
+        and eligible_backup.complete
+        and eligible_backup.zero_streak_hours >= zero_streak_limit_hours
     )
 
     if not primary.complete:
-        if backup is not None and backup.complete and not backup_stalled:
+        if (
+            eligible_backup is not None
+            and eligible_backup.complete
+            and not backup_stalled
+        ):
             return LocalSourceSelection(
-                backup,
+                eligible_backup,
                 "backup_selected",
                 fallback_used=True,
                 fallback_reason=primary.error or "primary_incomplete",
@@ -85,25 +119,33 @@ def select_local_source(
         return LocalSourceSelection(None, primary.error or "primary_incomplete")
 
     if primary_stalled:
-        if backup is not None and backup.complete and not backup_stalled:
+        if (
+            eligible_backup is not None
+            and eligible_backup.complete
+            and not backup_stalled
+        ):
             return LocalSourceSelection(
-                backup,
+                eligible_backup,
                 "backup_selected",
                 fallback_used=True,
                 fallback_reason="primary_frozen",
             )
         return LocalSourceSelection(None, "local_sensor_may_be_frozen")
 
-    if backup is None or not backup.complete or backup_stalled:
+    if eligible_backup is None or not eligible_backup.complete or backup_stalled:
         return LocalSourceSelection(primary, "primary_selected")
 
     if not readings_agree(
         primary,
-        backup,
+        eligible_backup,
         absolute_tolerance_kwh=agreement_absolute_kwh,
         relative_tolerance_percent=agreement_percent,
     ):
-        return LocalSourceSelection(None, "local_sources_disagree")
+        return LocalSourceSelection(
+            primary,
+            "primary_selected_sources_disagree",
+            sources_disagree=True,
+        )
 
     return LocalSourceSelection(primary, "primary_selected")
 

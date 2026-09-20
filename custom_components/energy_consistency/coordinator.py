@@ -6,6 +6,7 @@ import csv
 import logging
 import math
 import shutil
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -27,7 +28,10 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     BACKFILL_LOOKBACK_DAYS,
+    CONF_BACKUP_CALIBRATION_FACTOR,
+    CONF_BACKUP_LOCAL_ENABLED,
     CONF_BACKUP_LOCAL_ENERGY_ENTITY,
+    CONF_BACKUP_LOCAL_NAME,
     CONF_CRITICAL_ABS_KWH,
     CONF_CRITICAL_PERCENT,
     CONF_DAILY_ZERO_STREAK_HOURS,
@@ -39,9 +43,15 @@ from .const import (
     CONF_MAX_OFFICIAL_DELAY_DAYS,
     CONF_OFFICIAL_DATE_ENTITY,
     CONF_OFFICIAL_ENERGY_ENTITY,
+    CONF_PRIMARY_CALIBRATION_FACTOR,
+    CONF_PRIMARY_LOCAL_ENABLED,
+    CONF_PRIMARY_LOCAL_NAME,
     DAY_CRITICAL,
     DAY_INCOMPLETE,
     DAY_WARNING,
+    DEFAULT_BACKUP_LOCAL_ENABLED,
+    DEFAULT_BACKUP_LOCAL_NAME,
+    DEFAULT_CALIBRATION_FACTOR,
     DEFAULT_CRITICAL_ABS_KWH,
     DEFAULT_CRITICAL_PERCENT,
     DEFAULT_DAILY_ZERO_STREAK_HOURS,
@@ -50,12 +60,16 @@ from .const import (
     DEFAULT_GREEN_PERCENT,
     DEFAULT_LEARNING_DAYS,
     DEFAULT_MAX_OFFICIAL_DELAY_DAYS,
+    DEFAULT_PRIMARY_LOCAL_ENABLED,
+    DEFAULT_PRIMARY_LOCAL_NAME,
     DOMAIN,
     MAX_RECORDS,
     REFRESH_INTERVAL,
     SOURCE_STARTUP_GRACE,
+    STATUS_CRITICAL,
     STATUS_DATA_ISSUE,
     STATUS_WAITING,
+    STATUS_WARNING,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
 )
@@ -99,6 +113,32 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         self.backup_local_energy_entity = entry.data.get(
             CONF_BACKUP_LOCAL_ENERGY_ENTITY
         )
+        self.primary_local_name = self._configured_source_name(
+            entry.data.get(CONF_PRIMARY_LOCAL_NAME),
+            self.local_energy_entity,
+            DEFAULT_PRIMARY_LOCAL_NAME,
+        )
+        self.backup_local_name = (
+            self._configured_source_name(
+                entry.data.get(CONF_BACKUP_LOCAL_NAME),
+                self.backup_local_energy_entity,
+                DEFAULT_BACKUP_LOCAL_NAME,
+            )
+            if self.backup_local_energy_entity
+            else None
+        )
+        self.primary_local_enabled = bool(
+            self.option(CONF_PRIMARY_LOCAL_ENABLED, DEFAULT_PRIMARY_LOCAL_ENABLED)
+        )
+        self.backup_local_enabled = bool(
+            self.option(CONF_BACKUP_LOCAL_ENABLED, DEFAULT_BACKUP_LOCAL_ENABLED)
+        )
+        self.primary_calibration_factor = self._calibration_factor(
+            CONF_PRIMARY_CALIBRATION_FACTOR
+        )
+        self.backup_calibration_factor = self._calibration_factor(
+            CONF_BACKUP_CALIBRATION_FACTOR
+        )
         self.local_energy_entities = tuple(
             entity_id
             for entity_id in (
@@ -120,6 +160,29 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
     def option(self, key: str, default: Any) -> Any:
         """Return an option, falling back to the default."""
         return self.entry.options.get(key, default)
+
+    def _configured_source_name(
+        self, configured: Any, entity_id: str | None, fallback: str
+    ) -> str:
+        """Return a user label, then the entity name, then a generic label."""
+        if isinstance(configured, str) and configured.strip():
+            return configured.strip()
+        state = self.hass.states.get(entity_id) if entity_id else None
+        if state and state.attributes.get("friendly_name"):
+            return str(state.attributes["friendly_name"])
+        return fallback
+
+    def _calibration_factor(self, key: str) -> float:
+        """Return a safe optional calibration factor."""
+        try:
+            factor = float(self.option(key, DEFAULT_CALIBRATION_FACTOR))
+        except (TypeError, ValueError):
+            return DEFAULT_CALIBRATION_FACTOR
+        return (
+            factor
+            if math.isfinite(factor) and factor > 0
+            else DEFAULT_CALIBRATION_FACTOR
+        )
 
     async def async_initialize(self) -> None:
         """Load persisted records and start source monitoring."""
@@ -292,9 +355,24 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 expected_official_hours=expected_official_hours,
             )
 
+        enabled_local_entities = tuple(
+            entity_id
+            for entity_id, enabled in (
+                (self.local_energy_entity, self.primary_local_enabled),
+                (self.backup_local_energy_entity, self.backup_local_enabled),
+            )
+            if entity_id and enabled
+        )
+        if not enabled_local_entities:
+            return self._snapshot(
+                STATUS_DATA_ISSUE,
+                "no_local_source_included",
+                official_delay_days=delay_days,
+            )
+
         frozen_hours = float(self.option(CONF_FROZEN_HOURS, DEFAULT_FROZEN_HOURS))
         usable_local_states = []
-        for entity_id in self.local_energy_entities:
+        for entity_id in enabled_local_entities:
             state = self.hass.states.get(entity_id)
             if state is None or state.state.lower() in INVALID_STATES:
                 continue
@@ -302,7 +380,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 usable_local_states.append(state)
         if not usable_local_states:
             if self._within_startup_grace() and (
-                cached := self._cached_snapshot(list(self.local_energy_entities))
+                cached := self._cached_snapshot(list(enabled_local_entities))
             ):
                 return cached
             return self._snapshot(
@@ -388,6 +466,9 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             self.records,
             int(self.option(CONF_LEARNING_DAYS, DEFAULT_LEARNING_DAYS)),
         )
+        if comparison.local_sources_disagree and status != STATUS_CRITICAL:
+            status = STATUS_WARNING
+            reason = "local_sources_disagree"
         return self._snapshot(
             status,
             reason,
@@ -424,10 +505,16 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             valid,
             int(self.option(CONF_LEARNING_DAYS, DEFAULT_LEARNING_DAYS)),
         )
+        if latest.local_sources_disagree and status != STATUS_CRITICAL:
+            status = STATUS_WARNING
         recent = self._recent_calendar_records(valid)
         return CoordinatorSnapshot(
             status=status,
-            reason="using_last_verified_result",
+            reason=(
+                "local_sources_disagree"
+                if latest.local_sources_disagree
+                else "using_last_verified_result"
+            ),
             official_kwh=latest.official_kwh,
             local_kwh=latest.local_kwh,
             difference_kwh=latest.difference_kwh,
@@ -446,10 +533,29 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             pending_sources=tuple(self._source_roles(pending_sources)),
             local_source_entity=latest.local_source_entity,
             local_source_role=latest.local_source_role,
+            local_selection_reason=latest.local_selection_reason,
             fallback_used=latest.fallback_used,
             fallback_reason=latest.fallback_reason,
             primary_local_kwh=latest.primary_local_kwh,
             backup_local_kwh=latest.backup_local_kwh,
+            local_source_name=latest.local_source_name,
+            primary_local_name=self.primary_local_name,
+            backup_local_name=self.backup_local_name,
+            primary_local_enabled=self.primary_local_enabled,
+            backup_local_enabled=(
+                self.backup_local_enabled if self.backup_local_energy_entity else None
+            ),
+            primary_calibration_factor=self.primary_calibration_factor,
+            backup_calibration_factor=(
+                self.backup_calibration_factor
+                if self.backup_local_energy_entity
+                else None
+            ),
+            primary_adjusted_kwh=latest.primary_adjusted_kwh,
+            backup_adjusted_kwh=latest.backup_adjusted_kwh,
+            local_sources_disagree=latest.local_sources_disagree,
+            local_sources_difference_kwh=latest.local_sources_difference_kwh,
+            local_sources_difference_percent=(latest.local_sources_difference_percent),
         )
 
     def _source_roles(self, sources: list[str]) -> list[str]:
@@ -568,16 +674,26 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         expected_official_hours: int | None = None,
     ) -> DailyComparison:
         """Build a comparison using exactly one healthy local meter."""
-        primary = await self._async_local_day(
-            self.local_energy_entity,
-            "primary",
-            official_date,
+        primary = replace(
+            await self._async_local_day(
+                self.local_energy_entity,
+                "primary",
+                official_date,
+            ),
+            name=self.primary_local_name,
+            included=self.primary_local_enabled,
+            calibration_factor=self.primary_calibration_factor,
         )
         backup = (
-            await self._async_local_day(
-                self.backup_local_energy_entity,
-                "backup",
-                official_date,
+            replace(
+                await self._async_local_day(
+                    self.backup_local_energy_entity,
+                    "backup",
+                    official_date,
+                ),
+                name=self.backup_local_name,
+                included=self.backup_local_enabled,
+                calibration_factor=self.backup_calibration_factor,
             )
             if self.backup_local_energy_entity
             else None
@@ -599,7 +715,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         comparison = classify_day(
             date=official_date.isoformat(),
             official_kwh=official_kwh,
-            local_kwh=selected.kwh if selected else None,
+            local_kwh=selected.adjusted_kwh if selected else None,
             coverage_percent=(
                 selected.coverage_percent
                 if selected
@@ -615,7 +731,9 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         if selected is None:
             comparison.reason = selection.reason
         comparison.local_source_entity = selected.entity_id if selected else None
+        comparison.local_source_name = selected.name if selected else None
         comparison.local_source_role = selected.role if selected else None
+        comparison.local_selection_reason = selection.reason
         comparison.fallback_used = selection.fallback_used
         comparison.fallback_reason = selection.fallback_reason
         comparison.primary_local_kwh = primary.kwh
@@ -626,6 +744,35 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         comparison.backup_zero_streak_hours = (
             backup.zero_streak_hours if backup else None
         )
+        comparison.primary_local_name = primary.name
+        comparison.backup_local_name = backup.name if backup else None
+        comparison.primary_local_enabled = primary.included
+        comparison.backup_local_enabled = backup.included if backup else None
+        comparison.primary_calibration_factor = primary.calibration_factor
+        comparison.backup_calibration_factor = (
+            backup.calibration_factor if backup else None
+        )
+        comparison.primary_adjusted_kwh = (
+            round(primary.adjusted_kwh, 3) if primary.adjusted_kwh is not None else None
+        )
+        comparison.backup_adjusted_kwh = (
+            round(backup.adjusted_kwh, 3)
+            if backup and backup.adjusted_kwh is not None
+            else None
+        )
+        comparison.local_sources_disagree = selection.sources_disagree
+        if (
+            primary.adjusted_kwh is not None
+            and backup is not None
+            and backup.adjusted_kwh is not None
+        ):
+            source_difference = backup.adjusted_kwh - primary.adjusted_kwh
+            comparison.local_sources_difference_kwh = round(source_difference, 3)
+            comparison.local_sources_difference_percent = (
+                round(source_difference / primary.adjusted_kwh * 100, 2)
+                if primary.adjusted_kwh > 0
+                else (0.0 if abs(source_difference) <= 1e-9 else None)
+            )
         return comparison
 
     async def _async_local_day(
@@ -745,7 +892,9 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 expected_official_hours=record.expected_official_hours,
             )
             comparison.local_source_entity = record.local_source_entity
+            comparison.local_source_name = record.local_source_name
             comparison.local_source_role = record.local_source_role
+            comparison.local_selection_reason = record.local_selection_reason
             comparison.fallback_used = record.fallback_used
             comparison.fallback_reason = record.fallback_reason
             comparison.primary_local_kwh = record.primary_local_kwh
@@ -754,6 +903,21 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             comparison.backup_coverage_percent = record.backup_coverage_percent
             comparison.primary_zero_streak_hours = record.primary_zero_streak_hours
             comparison.backup_zero_streak_hours = record.backup_zero_streak_hours
+            comparison.primary_local_name = record.primary_local_name
+            comparison.backup_local_name = record.backup_local_name
+            comparison.primary_local_enabled = record.primary_local_enabled
+            comparison.backup_local_enabled = record.backup_local_enabled
+            comparison.primary_calibration_factor = record.primary_calibration_factor
+            comparison.backup_calibration_factor = record.backup_calibration_factor
+            comparison.primary_adjusted_kwh = record.primary_adjusted_kwh
+            comparison.backup_adjusted_kwh = record.backup_adjusted_kwh
+            comparison.local_sources_disagree = record.local_sources_disagree
+            comparison.local_sources_difference_kwh = (
+                record.local_sources_difference_kwh
+            )
+            comparison.local_sources_difference_percent = (
+                record.local_sources_difference_percent
+            )
             if comparison.status == DAY_INCOMPLETE:
                 changed = True
                 continue
@@ -818,13 +982,19 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             }
         )
 
-    def _source_storage_metadata(self) -> dict[str, str | None]:
+    def _source_storage_metadata(self) -> dict[str, object]:
         """Return source identity stored alongside comparisons."""
         return {
             "official_energy": self.official_energy_entity,
             "official_date": self.official_date_entity,
             "local_energy": self.local_energy_entity,
             "backup_local_energy": self.backup_local_energy_entity,
+            "primary_local_name": self.primary_local_name,
+            "backup_local_name": self.backup_local_name,
+            "primary_local_enabled": self.primary_local_enabled,
+            "backup_local_enabled": self.backup_local_enabled,
+            "primary_calibration_factor": self.primary_calibration_factor,
+            "backup_calibration_factor": self.backup_calibration_factor,
         }
 
     async def _async_clear_reports(self) -> None:
@@ -870,7 +1040,9 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                         "critical_percent",
                         "min_coverage_percent",
                         "local_source_entity",
+                        "local_source_name",
                         "local_source_role",
+                        "local_selection_reason",
                         "fallback_used",
                         "fallback_reason",
                         "primary_local_kwh",
@@ -879,6 +1051,17 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                         "backup_coverage_percent",
                         "primary_zero_streak_hours",
                         "backup_zero_streak_hours",
+                        "primary_local_name",
+                        "backup_local_name",
+                        "primary_local_enabled",
+                        "backup_local_enabled",
+                        "primary_calibration_factor",
+                        "backup_calibration_factor",
+                        "primary_adjusted_kwh",
+                        "backup_adjusted_kwh",
+                        "local_sources_disagree",
+                        "local_sources_difference_kwh",
+                        "local_sources_difference_percent",
                         "algorithm_version",
                     ]
                 )
@@ -902,7 +1085,9 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                                 record.critical_percent,
                                 record.min_coverage_percent,
                                 record.local_source_entity,
+                                record.local_source_name,
                                 record.local_source_role,
+                                record.local_selection_reason,
                                 record.fallback_used,
                                 record.fallback_reason,
                                 record.primary_local_kwh,
@@ -911,6 +1096,17 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                                 record.backup_coverage_percent,
                                 record.primary_zero_streak_hours,
                                 record.backup_zero_streak_hours,
+                                record.primary_local_name,
+                                record.backup_local_name,
+                                record.primary_local_enabled,
+                                record.backup_local_enabled,
+                                record.primary_calibration_factor,
+                                record.backup_calibration_factor,
+                                record.primary_adjusted_kwh,
+                                record.backup_adjusted_kwh,
+                                record.local_sources_disagree,
+                                record.local_sources_difference_kwh,
+                                record.local_sources_difference_percent,
                                 record.algorithm_version,
                             ]
                         )
@@ -953,10 +1149,33 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             pending_sources=(),
             local_source_entity=latest.local_source_entity if latest else None,
             local_source_role=latest.local_source_role if latest else None,
+            local_selection_reason=(latest.local_selection_reason if latest else None),
             fallback_used=latest.fallback_used if latest else False,
             fallback_reason=latest.fallback_reason if latest else None,
             primary_local_kwh=latest.primary_local_kwh if latest else None,
             backup_local_kwh=latest.backup_local_kwh if latest else None,
+            local_source_name=latest.local_source_name if latest else None,
+            primary_local_name=self.primary_local_name,
+            backup_local_name=self.backup_local_name,
+            primary_local_enabled=self.primary_local_enabled,
+            backup_local_enabled=(
+                self.backup_local_enabled if self.backup_local_energy_entity else None
+            ),
+            primary_calibration_factor=self.primary_calibration_factor,
+            backup_calibration_factor=(
+                self.backup_calibration_factor
+                if self.backup_local_energy_entity
+                else None
+            ),
+            primary_adjusted_kwh=(latest.primary_adjusted_kwh if latest else None),
+            backup_adjusted_kwh=latest.backup_adjusted_kwh if latest else None,
+            local_sources_disagree=(latest.local_sources_disagree if latest else False),
+            local_sources_difference_kwh=(
+                latest.local_sources_difference_kwh if latest else None
+            ),
+            local_sources_difference_percent=(
+                latest.local_sources_difference_percent if latest else None
+            ),
         )
 
 

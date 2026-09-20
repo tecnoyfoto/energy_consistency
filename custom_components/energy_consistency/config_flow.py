@@ -17,7 +17,10 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_BACKUP_CALIBRATION_FACTOR,
+    CONF_BACKUP_LOCAL_ENABLED,
     CONF_BACKUP_LOCAL_ENERGY_ENTITY,
+    CONF_BACKUP_LOCAL_NAME,
     CONF_CRITICAL_ABS_KWH,
     CONF_CRITICAL_PERCENT,
     CONF_DAILY_ZERO_STREAK_HOURS,
@@ -30,6 +33,12 @@ from .const import (
     CONF_NAME,
     CONF_OFFICIAL_DATE_ENTITY,
     CONF_OFFICIAL_ENERGY_ENTITY,
+    CONF_PRIMARY_CALIBRATION_FACTOR,
+    CONF_PRIMARY_LOCAL_ENABLED,
+    CONF_PRIMARY_LOCAL_NAME,
+    DEFAULT_BACKUP_LOCAL_ENABLED,
+    DEFAULT_BACKUP_LOCAL_NAME,
+    DEFAULT_CALIBRATION_FACTOR,
     DEFAULT_CRITICAL_ABS_KWH,
     DEFAULT_CRITICAL_PERCENT,
     DEFAULT_DAILY_ZERO_STREAK_HOURS,
@@ -39,6 +48,8 @@ from .const import (
     DEFAULT_LEARNING_DAYS,
     DEFAULT_MAX_OFFICIAL_DELAY_DAYS,
     DEFAULT_NAME,
+    DEFAULT_PRIMARY_LOCAL_ENABLED,
+    DEFAULT_PRIMARY_LOCAL_NAME,
     DOMAIN,
 )
 from .coordinator import _energy_to_kwh, _parse_date
@@ -84,7 +95,17 @@ def _source_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             required_entity(CONF_OFFICIAL_ENERGY_ENTITY): _entity_selector(),
             required_entity(CONF_OFFICIAL_DATE_ENTITY): _entity_selector(),
             required_entity(CONF_LOCAL_ENERGY_ENTITY): _entity_selector(),
+            vol.Required(
+                CONF_PRIMARY_LOCAL_NAME,
+                default=defaults.get(
+                    CONF_PRIMARY_LOCAL_NAME, DEFAULT_PRIMARY_LOCAL_NAME
+                ),
+            ): str,
             backup: _entity_selector(),
+            vol.Optional(
+                CONF_BACKUP_LOCAL_NAME,
+                default=defaults.get(CONF_BACKUP_LOCAL_NAME, DEFAULT_BACKUP_LOCAL_NAME),
+            ): str,
         }
     )
 
@@ -104,7 +125,15 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not errors:
                 if not user_input.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY):
                     user_input.pop(CONF_BACKUP_LOCAL_ENERGY_ENTITY, None)
+                    user_input.pop(CONF_BACKUP_LOCAL_NAME, None)
                 user_input[CONF_NAME] = user_input[CONF_NAME].strip()
+                user_input[CONF_PRIMARY_LOCAL_NAME] = user_input[
+                    CONF_PRIMARY_LOCAL_NAME
+                ].strip()
+                if user_input.get(CONF_BACKUP_LOCAL_NAME):
+                    user_input[CONF_BACKUP_LOCAL_NAME] = user_input[
+                        CONF_BACKUP_LOCAL_NAME
+                    ].strip()
                 await self.async_set_unique_id(_entry_unique_id(user_input))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -126,6 +155,7 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not errors:
                 if not user_input.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY):
                     user_input.pop(CONF_BACKUP_LOCAL_ENERGY_ENTITY, None)
+                    user_input.pop(CONF_BACKUP_LOCAL_NAME, None)
                 unique_id = _entry_unique_id(user_input)
                 duplicate = next(
                     (
@@ -140,6 +170,13 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "already_configured"
                 else:
                     user_input[CONF_NAME] = user_input[CONF_NAME].strip()
+                    user_input[CONF_PRIMARY_LOCAL_NAME] = user_input[
+                        CONF_PRIMARY_LOCAL_NAME
+                    ].strip()
+                    if user_input.get(CONF_BACKUP_LOCAL_NAME):
+                        user_input[CONF_BACKUP_LOCAL_NAME] = user_input[
+                            CONF_BACKUP_LOCAL_NAME
+                        ].strip()
                     return self.async_update_and_abort(
                         entry,
                         data=user_input,
@@ -147,7 +184,7 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         unique_id=unique_id,
                     )
 
-        defaults = dict(entry.data)
+        defaults = self._source_defaults(entry)
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_source_schema(defaults),
@@ -158,9 +195,13 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Validate entities without performing I/O."""
         if not data.get(CONF_NAME, "").strip():
             return {CONF_NAME: "invalid_name"}
+        if not data.get(CONF_PRIMARY_LOCAL_NAME, "").strip():
+            return {CONF_PRIMARY_LOCAL_NAME: "invalid_name"}
         if data[CONF_OFFICIAL_ENERGY_ENTITY] == data[CONF_LOCAL_ENERGY_ENTITY]:
             return {"base": "sources_must_differ"}
         backup_entity = data.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY)
+        if backup_entity and not data.get(CONF_BACKUP_LOCAL_NAME, "").strip():
+            return {CONF_BACKUP_LOCAL_NAME: "invalid_name"}
         if backup_entity and backup_entity in {
             data[CONF_OFFICIAL_ENERGY_ENTITY],
             data[CONF_LOCAL_ENERGY_ENTITY],
@@ -224,6 +265,31 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return {field: "local_must_be_total"}
         return {}
 
+    def _source_defaults(self, entry: config_entries.ConfigEntry) -> dict[str, Any]:
+        """Return source defaults, migrating labels from entity names in the UI."""
+        defaults = dict(entry.data)
+        defaults.setdefault(
+            CONF_PRIMARY_LOCAL_NAME,
+            self._entity_name(
+                defaults.get(CONF_LOCAL_ENERGY_ENTITY), DEFAULT_PRIMARY_LOCAL_NAME
+            ),
+        )
+        if defaults.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY):
+            defaults.setdefault(
+                CONF_BACKUP_LOCAL_NAME,
+                self._entity_name(
+                    defaults.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY),
+                    DEFAULT_BACKUP_LOCAL_NAME,
+                ),
+            )
+        return defaults
+
+    def _entity_name(self, entity_id: str | None, fallback: str) -> str:
+        state = self.hass.states.get(entity_id) if entity_id else None
+        return (
+            str(state.attributes.get("friendly_name", fallback)) if state else fallback
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -239,7 +305,139 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage integration options."""
+        """Offer clearly separated source and threshold settings."""
+        return self.async_show_menu(
+            step_id="init", menu_options=["sources", "thresholds"]
+        )
+
+    async def async_step_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure local meters and whether they participate in coherence."""
+        entry = self.config_entry
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            new_data = dict(entry.data)
+            for key in (
+                CONF_LOCAL_ENERGY_ENTITY,
+                CONF_BACKUP_LOCAL_ENERGY_ENTITY,
+                CONF_PRIMARY_LOCAL_NAME,
+                CONF_BACKUP_LOCAL_NAME,
+            ):
+                if user_input.get(key):
+                    new_data[key] = (
+                        user_input[key].strip()
+                        if isinstance(user_input[key], str)
+                        and key in {CONF_PRIMARY_LOCAL_NAME, CONF_BACKUP_LOCAL_NAME}
+                        else user_input[key]
+                    )
+                elif key in {
+                    CONF_BACKUP_LOCAL_ENERGY_ENTITY,
+                    CONF_BACKUP_LOCAL_NAME,
+                }:
+                    new_data.pop(key, None)
+
+            errors = EnergyConsistencyConfigFlow._validate(self, new_data)
+            unique_id = _entry_unique_id(new_data)
+            if not errors and any(
+                other.entry_id != entry.entry_id and other.unique_id == unique_id
+                for other in self.hass.config_entries.async_entries(DOMAIN)
+            ):
+                errors["base"] = "already_configured"
+            if not errors:
+                self.hass.config_entries.async_update_entry(
+                    entry, data=new_data, title=new_data[CONF_NAME], unique_id=unique_id
+                )
+                options = dict(entry.options)
+                for key in (
+                    CONF_PRIMARY_LOCAL_ENABLED,
+                    CONF_BACKUP_LOCAL_ENABLED,
+                    CONF_PRIMARY_CALIBRATION_FACTOR,
+                    CONF_BACKUP_CALIBRATION_FACTOR,
+                ):
+                    options[key] = user_input[key]
+                return self.async_create_entry(title="", data=options)
+
+        data = dict(entry.data)
+        primary_entity = data[CONF_LOCAL_ENERGY_ENTITY]
+        backup_entity = data.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY)
+        primary_state = self.hass.states.get(primary_entity)
+        backup_state = self.hass.states.get(backup_entity) if backup_entity else None
+        current = entry.options
+        number = selector.NumberSelector
+        factor_config = selector.NumberSelectorConfig(
+            min=0.5,
+            max=1.5,
+            step=0.001,
+            mode=selector.NumberSelectorMode.BOX,
+        )
+        backup_selector_key = (
+            vol.Optional(CONF_BACKUP_LOCAL_ENERGY_ENTITY, default=backup_entity)
+            if backup_entity
+            else vol.Optional(CONF_BACKUP_LOCAL_ENERGY_ENTITY)
+        )
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_LOCAL_ENERGY_ENTITY, default=primary_entity
+                ): _entity_selector(),
+                vol.Required(
+                    CONF_PRIMARY_LOCAL_NAME,
+                    default=data.get(
+                        CONF_PRIMARY_LOCAL_NAME,
+                        (
+                            primary_state.attributes.get("friendly_name")
+                            if primary_state
+                            else DEFAULT_PRIMARY_LOCAL_NAME
+                        ),
+                    ),
+                ): str,
+                vol.Required(
+                    CONF_PRIMARY_LOCAL_ENABLED,
+                    default=current.get(
+                        CONF_PRIMARY_LOCAL_ENABLED, DEFAULT_PRIMARY_LOCAL_ENABLED
+                    ),
+                ): bool,
+                vol.Required(
+                    CONF_PRIMARY_CALIBRATION_FACTOR,
+                    default=current.get(
+                        CONF_PRIMARY_CALIBRATION_FACTOR, DEFAULT_CALIBRATION_FACTOR
+                    ),
+                ): number(factor_config),
+                backup_selector_key: _entity_selector(),
+                vol.Optional(
+                    CONF_BACKUP_LOCAL_NAME,
+                    default=data.get(
+                        CONF_BACKUP_LOCAL_NAME,
+                        (
+                            backup_state.attributes.get("friendly_name")
+                            if backup_state
+                            else DEFAULT_BACKUP_LOCAL_NAME
+                        ),
+                    ),
+                ): str,
+                vol.Required(
+                    CONF_BACKUP_LOCAL_ENABLED,
+                    default=current.get(
+                        CONF_BACKUP_LOCAL_ENABLED, DEFAULT_BACKUP_LOCAL_ENABLED
+                    ),
+                ): bool,
+                vol.Required(
+                    CONF_BACKUP_CALIBRATION_FACTOR,
+                    default=current.get(
+                        CONF_BACKUP_CALIBRATION_FACTOR, DEFAULT_CALIBRATION_FACTOR
+                    ),
+                ): number(factor_config),
+            }
+        )
+        return self.async_show_form(
+            step_id="sources", data_schema=schema, errors=errors
+        )
+
+    async def async_step_thresholds(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage comparison and health thresholds."""
         errors: dict[str, str] = {}
         if user_input is not None:
             if user_input[CONF_GREEN_ABS_KWH] >= user_input[CONF_CRITICAL_ABS_KWH]:
@@ -247,7 +445,9 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
             if user_input[CONF_GREEN_PERCENT] >= user_input[CONF_CRITICAL_PERCENT]:
                 errors[CONF_CRITICAL_PERCENT] = "critical_must_exceed_green"
             if not errors:
-                return self.async_create_entry(title="", data=user_input)
+                options = dict(self.config_entry.options)
+                options.update(user_input)
+                return self.async_create_entry(title="", data=options)
 
         current = self.config_entry.options
         number = selector.NumberSelector
@@ -299,4 +499,6 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
                 ): number(config(min=1, max=30, step=1, mode=mode)),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="thresholds", data_schema=schema, errors=errors
+        )

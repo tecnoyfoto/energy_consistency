@@ -188,6 +188,8 @@ class EnergyConsistencyStatusSensor(EnergyConsistencyBaseSensor):
             "local_sources_difference_kwh",
             "local_sources_difference_percent",
             "recent_comparisons",
+            "source_entities",
+            "source_states",
         }
     )
 
@@ -217,7 +219,21 @@ class EnergyConsistencyStatusSensor(EnergyConsistencyBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self.coordinator.data
+        sources = {
+            "official_energy": self.coordinator.official_energy_entity,
+            "official_date": self.coordinator.official_date_entity,
+            "primary_local_energy": self.coordinator.local_energy_entity,
+        }
+        if self.coordinator.backup_local_energy_entity:
+            sources["backup_local_energy"] = self.coordinator.backup_local_energy_entity
         return {
+            "source_entities": sources,
+            "source_states": {
+                role: state.state
+                if (state := self.hass.states.get(entity))
+                else "unavailable"
+                for role, entity in sources.items()
+            },
             "reason": data.reason,
             "valid_days": data.valid_days,
             "warning_days_last_7": data.warning_days,

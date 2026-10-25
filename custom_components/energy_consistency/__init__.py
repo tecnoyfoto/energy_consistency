@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from asyncio import CancelledError
 from pathlib import Path
 
 from homeassistant.components.http import StaticPathConfig
@@ -43,12 +44,16 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Energy Consistency from a config entry."""
     coordinator = EnergyConsistencyCoordinator(hass, entry)
-    await coordinator.async_initialize()
-    await coordinator.async_config_entry_first_refresh()
-
-    entry.runtime_data = coordinator
+    try:
+        await coordinator.async_initialize()
+        await coordinator.async_config_entry_first_refresh()
+        entry.runtime_data = coordinator
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except (Exception, CancelledError):
+        # An unsuccessful setup must not leave event listeners or timers alive.
+        await coordinator.async_shutdown()
+        raise
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 

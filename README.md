@@ -12,7 +12,7 @@ the cause of a discrepancy.
 
 ## Current status
 
-Version `0.9.0` is the current public preview. It is already running in a real
+Version `0.9.1` is the current public preview. It is already running in a real
 Home Assistant installation, includes automated tests, preserves verified
 history across restarts, and deliberately rejects partial days.
 
@@ -62,7 +62,7 @@ The official source must provide enough information to prove that a day is
 complete. The integration currently supports:
 
 - eData complete daily consumption records;
-- another official sensor exposing `last_registered_day_hours`.
+- another official sensor exposing `last_registered_day_hours` or `last_day_delta_h`.
 
 Energy Consistency never assumes that an arbitrary daily value is complete.
 
@@ -254,3 +254,26 @@ See [CHANGELOG.md](CHANGELOG.md).
 ## License
 
 [MIT](LICENSE)
+
+
+## Compatibility and upgrades (0.9.1)
+
+Official sources are configurable: no household-specific entities, credentials, or readings are bundled. eData is optional. The modern adapter has been checked with eData 2026.10.4; the legacy adapter and a safe fallback to the latest complete official sensor remain supported. Historical access uses optional eData internals, so compatibility with future versions is not guaranteed.
+
+When eData changes its sensor identity from `last_registered_day_kwh` to `last_day_kwh`, the integration automatically selects the replacement in the **same supply and eData config entry**, including entities assigned a `_2` suffix. This migration preserves comparisons and never chooses a different supply by display name. Manually changing to a different official source still starts a new history.
+
+Recorder statistics are requested explicitly in kWh. Changing the live sensor display unit between Wh, kWh and MWh does not reinterpret its history. Recorder must be enabled and include the selected local meters. An available hourly bucket does not establish continuous samples throughout that hour.
+
+Automatic backfill covers the latest 14 days, or the configured maximum official delay when longer. It only saves complete days with available local statistics. The independent history retains up to 730 comparisons. Inclusion, priority and calibration changes apply to new comparisons; verified history retains the meter and calibration used at the time unless an official correction or measurement-algorithm upgrade requires recalculating an available day.
+
+To upgrade, install the HACS update and restart Home Assistant. Do not remove and re-add the integration: removal deletes its history and reports. Reload the browser if the badge still looks old; its resource URL includes a cache-busting version. Installation uses a custom HACS repository; this does not imply inclusion in HACS's default catalogue.
+
+## Diagnosis and safe support
+
+When a source is unavailable, the badge identifies its entity and state. Previous readings remain visible with an explicit last-saved-comparison notice. An excluded backup is not presented as a source that needs repair.
+
+Downloaded diagnostics redact customized titles, names, entity identifiers, consumption and absolute/relative differences that could reconstruct it. Dates, status, coverage and thresholds remain for support. CSV reports are private exports containing consumption and names; review them before sharing. Formula-like meter names are exported as text for spreadsheet safety.
+
+Before requesting help, check source availability, Recorder inclusion and whether the official source has published every hour. Include Home Assistant, Energy Consistency and official-source versions, the diagnosis reason and, if needed, reviewed diagnostics. Never publish tokens, passwords, complete configuration files or screenshots containing personal data.
+
+The official reading date must identify the same local calendar day and timezone as Home Assistant. Normalize a differently represented date in a source/template sensor before selecting it. See [the public audit](AUDIT.md) for the checks performed and their limits.

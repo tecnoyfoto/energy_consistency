@@ -47,3 +47,47 @@ def resolve_edata_daily_rows(
         return EDataAdapterState.HISTORY_UNAVAILABLE, ()
 
     return EDataAdapterState.HISTORY_AVAILABLE, compatible_rows
+
+
+def replacement_edata_unique_id(unique_id: str) -> str | None:
+    """Map only eData's renamed daily consumption identity for the same supply."""
+    suffix = " last_registered_day_kwh"
+    if unique_id.endswith(suffix):
+        return unique_id.removesuffix(suffix) + " last_day_kwh"
+    return None
+
+
+def official_day_hours(attributes: dict[str, Any]) -> Any:
+    """Accept both generations of eData's complete-day attribute."""
+    hours = attributes.get("last_registered_day_hours")
+    return attributes.get("last_day_delta_h") if hours is None else hours
+
+
+async def async_resolve_edata_daily_rows(
+    edata_data: Any, scups: str, *, start: Any
+) -> tuple[EDataAdapterState, tuple[dict[str, Any], ...]]:
+    """Read legacy shared rows or daily aggregates from modern eData."""
+    state, rows = resolve_edata_daily_rows(edata_data, scups)
+    if state is EDataAdapterState.HISTORY_AVAILABLE:
+        return state, rows
+    if not scups or not isinstance(edata_data, dict):
+        return state, rows
+    shared = edata_data.get(scups)
+    if not isinstance(shared, dict):
+        return state, rows
+    manager = shared.get("data_manager")
+    if manager is None or not callable(getattr(manager, "get_aggr_energy", None)):
+        return state, rows
+    daily = await manager.get_aggr_energy(aggregation="day", start=start)
+    normalized = tuple(
+        {
+            "datetime": row.datetime,
+            "value_kWh": row.consumption_kwh,
+            "delta_h": row.delta_h,
+        }
+        for row in daily
+        if all(hasattr(row, key) for key in ("datetime", "consumption_kwh", "delta_h"))
+    )
+    if not normalized:
+        return EDataAdapterState.HISTORY_UNAVAILABLE, ()
+    return EDataAdapterState.HISTORY_AVAILABLE, normalized

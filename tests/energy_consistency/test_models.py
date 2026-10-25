@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +24,6 @@ from custom_components.energy_consistency.models import (  # noqa: E402
     COMPARISON_ALGORITHM_VERSION,
     DailyComparison,
 )
-
 
 LEGACY_RECORD = {
     "date": "2026-07-26",

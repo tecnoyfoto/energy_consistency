@@ -53,6 +53,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import _energy_to_kwh, _parse_date
+from .edata_adapter import official_day_hours
 
 
 def _entity_selector() -> selector.EntitySelector:
@@ -151,7 +152,7 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = self._validate(user_input)
+            errors = self._validate(user_input, allow_unavailable=True)
             if not errors:
                 if not user_input.get(CONF_BACKUP_LOCAL_ENERGY_ENTITY):
                     user_input.pop(CONF_BACKUP_LOCAL_ENERGY_ENTITY, None)
@@ -191,7 +192,9 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    def _validate(self, data: dict[str, Any]) -> dict[str, str]:
+    def _validate(
+        self, data: dict[str, Any], *, allow_unavailable: bool = False
+    ) -> dict[str, str]:
         """Validate entities without performing I/O."""
         if not data.get(CONF_NAME, "").strip():
             return {CONF_NAME: "invalid_name"}
@@ -219,16 +222,20 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             or any(state is None for state in local_states)
         ):
             return {"base": "entity_not_found"}
-        if _parse_date(official_date.state) is None:
-            return {CONF_OFFICIAL_DATE_ENTITY: "invalid_date_entity"}
+        invalid_states = (STATE_UNAVAILABLE, STATE_UNKNOWN)
         if (
+            not (allow_unavailable and official_date.state in invalid_states)
+            and _parse_date(official_date.state) is None
+        ):
+            return {CONF_OFFICIAL_DATE_ENTITY: "invalid_date_entity"}
+        if not (allow_unavailable and official.state in invalid_states) and (
             _energy_to_kwh(
                 official.state, official.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
             )
             is None
         ):
             return {CONF_OFFICIAL_ENERGY_ENTITY: "invalid_energy_entity"}
-        official_hours = official.attributes.get("last_registered_day_hours")
+        official_hours = official_day_hours(official.attributes)
         entity_entry = er.async_get(self.hass).async_get(
             data[CONF_OFFICIAL_ENERGY_ENTITY]
         )
@@ -237,8 +244,10 @@ class EnergyConsistencyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if entity_entry is not None and entity_entry.config_entry_id is not None
             else None
         )
-        if official_hours is None and (
-            source_entry is None or source_entry.domain != "edata"
+        if (
+            official_hours is None
+            and not (allow_unavailable and official.state in invalid_states)
+            and (source_entry is None or source_entry.domain != "edata")
         ):
             return {CONF_OFFICIAL_ENERGY_ENTITY: "official_completeness_unavailable"}
         for entity_id, local in zip(local_entities, local_states, strict=True):
@@ -337,7 +346,9 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
                 }:
                     new_data.pop(key, None)
 
-            errors = EnergyConsistencyConfigFlow._validate(self, new_data)
+            errors = EnergyConsistencyConfigFlow._validate(
+                self, new_data, allow_unavailable=True
+            )
             unique_id = _entry_unique_id(new_data)
             if not errors and any(
                 other.entry_id != entry.entry_id and other.unique_id == unique_id
@@ -345,9 +356,6 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
             ):
                 errors["base"] = "already_configured"
             if not errors:
-                self.hass.config_entries.async_update_entry(
-                    entry, data=new_data, title=new_data[CONF_NAME], unique_id=unique_id
-                )
                 options = dict(entry.options)
                 for key in (
                     CONF_PRIMARY_LOCAL_ENABLED,
@@ -356,6 +364,14 @@ class EnergyConsistencyOptionsFlow(config_entries.OptionsFlow):
                     CONF_BACKUP_CALIBRATION_FACTOR,
                 ):
                     options[key] = user_input[key]
+                # Commit source data and options together to avoid two reloads.
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data=new_data,
+                    options=options,
+                    title=new_data[CONF_NAME],
+                    unique_id=unique_id,
+                )
                 return self.async_create_entry(title="", data=options)
 
         data = dict(entry.data)

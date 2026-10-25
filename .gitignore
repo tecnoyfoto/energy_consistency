@@ -11,3 +11,14 @@ venv/
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Local installation data, audits, backups, and build outputs.
+/backups/
+/work/
+/dist/
+/REPARACION-*.md
+/AUDITORIA-*.md
+/.storage/
+/reports/
+.env
+.env.*

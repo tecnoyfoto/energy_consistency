@@ -2,6 +2,18 @@
 
 Este archivo documenta los cambios destacados de Energy Consistency.
 
+## [0.9.1] - 2026-10-25
+
+- Compatibilidad con eData 2026.10.4: migración del sensor diario dentro del mismo suministro, atributos de horas nuevos y antiguos y recuperación del historial moderno.
+- Conservación del historial durante la migración automática de eData.
+- Conversión explícita a kWh mediante las unidades de Recorder y actualización de las comparaciones antiguas disponibles, sin confundir reclasificación con recálculo.
+- Limpieza de escuchas si falla la carga y guardado conjunto de opciones para evitar recargas duplicadas.
+- Reconfiguración disponible durante fallos temporales de las fuentes oficiales y errores traducidos en las opciones.
+- Diagnóstico que identifica fuentes no disponibles y distingue las lecturas guardadas del fallo actual.
+- Eliminación del título y diferencias reconstruibles de los diagnósticos descargables; nombres seguros en los CSV.
+- Pruebas adicionales de migración, configuración, unidades, privacidad, interfaz y empaquetado público.
+- Validación de versiones y traducciones, herramientas de empaquetado y guía de soporte y actualización.
+
 ## [0.9.0] - 2026-09-20
 
 ### Añadido

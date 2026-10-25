@@ -73,7 +73,12 @@ from .const import (
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
 )
-from .edata_adapter import EDataAdapterState, resolve_edata_daily_rows
+from .edata_adapter import (
+    EDataAdapterState,
+    async_resolve_edata_daily_rows,
+    official_day_hours,
+    replacement_edata_unique_id,
+)
 from .engine import (
     aggregate_status,
     cached_result_is_fresh,
@@ -88,6 +93,7 @@ from .local_sources import (
     select_local_source,
 )
 from .models import CoordinatorSnapshot, DailyComparison
+from .reporting import csv_safe_text
 
 _LOGGER = logging.getLogger(__name__)
 INVALID_STATES = {STATE_UNKNOWN, STATE_UNAVAILABLE, "none", ""}
@@ -187,6 +193,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
     async def async_initialize(self) -> None:
         """Load persisted records and start source monitoring."""
         stored = await self._store.async_load() or {}
+        migrated = self._migrate_edata_source(stored)
         current_sources = self._source_storage_metadata()
         stored_sources = stored.get("sources")
         sources_changed = official_sources_changed(stored_sources, current_sources)
@@ -203,7 +210,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 continue
             try:
                 record = DailyComparison.from_dict(item)
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError, OverflowError):
                 rejected_records += 1
                 _LOGGER.warning("Ignoring an invalid stored energy comparison")
                 continue
@@ -221,7 +228,13 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             _LOGGER.info(
                 "Local meter configuration changed; preserving comparison history"
             )
-        if sources_changed or local_sources_changed or rejected_records or reclassified:
+        if (
+            migrated
+            or sources_changed
+            or local_sources_changed
+            or rejected_records
+            or reclassified
+        ):
             await self._async_persist()
             await self._async_write_reports()
 
@@ -261,6 +274,57 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         self._unsub_state = async_track_state_change_event(
             self.hass, entities, _source_changed
         )
+
+    def _migrate_edata_source(self, stored: dict[str, Any]) -> bool:
+        """Follow eData's renamed sensor without changing supply or losing history."""
+        registry = er.async_get(self.hass)
+        old = registry.async_get(self.official_energy_entity)
+        if old is None or old.platform != "edata" or not old.config_entry_id:
+            return False
+        replacement_id = replacement_edata_unique_id(old.unique_id)
+        if replacement_id is None:
+            return False
+        matches = [
+            entity
+            for entity in er.async_entries_for_config_entry(
+                registry, old.config_entry_id
+            )
+            if entity.platform == "edata"
+            and entity.unique_id == replacement_id
+            and entity.disabled_by is None
+        ]
+        if len(matches) != 1:
+            return False
+        old_id = self.official_energy_entity
+        new_id = matches[0].entity_id
+        data = dict(self.entry.data)
+        data[CONF_OFFICIAL_ENERGY_ENTITY] = new_id
+        unique_id = "|".join(
+            (
+                new_id,
+                self.official_date_entity,
+                self.local_energy_entity,
+                self.backup_local_energy_entity or "",
+            )
+        )
+        if any(
+            entry.entry_id != self.entry.entry_id and entry.unique_id == unique_id
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+        ):
+            return False
+        self.hass.config_entries.async_update_entry(
+            self.entry, data=data, unique_id=unique_id
+        )
+        self.official_energy_entity = new_id
+        sources = stored.get("sources")
+        if isinstance(sources, dict) and sources.get("official_energy") == old_id:
+            sources["official_energy"] = new_id
+        _LOGGER.info(
+            "Migrated renamed eData sensor %s to %s; preserving comparisons",
+            old_id,
+            new_id,
+        )
+        return True
 
     async def async_shutdown(self) -> None:
         """Stop listeners owned by the coordinator."""
@@ -334,9 +398,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
         edata_adapter_state = await self._async_backfill_edata_days(today)
         using_edata_history = edata_adapter_state is EDataAdapterState.HISTORY_AVAILABLE
 
-        official_hours = _optional_float(
-            official_state.attributes.get("last_registered_day_hours")
-        )
+        official_hours = _optional_float(official_day_hours(official_state.attributes))
         expected_official_hours = expected_hours_for_day(
             official_date, dt_util.DEFAULT_TIME_ZONE
         )
@@ -598,9 +660,32 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             return EDataAdapterState.NOT_EDATA
 
         scups = str(source_entry.data.get("scups", "")).lower()
-        adapter_state, rows = resolve_edata_daily_rows(
-            self.hass.data.get("edata"), scups
-        )
+        try:
+            adapter_state, rows = await async_resolve_edata_daily_rows(
+                self.hass.data.get("edata"),
+                scups,
+                start=datetime.combine(
+                    today
+                    - timedelta(
+                        days=max(
+                            BACKFILL_LOOKBACK_DAYS,
+                            int(
+                                self.option(
+                                    CONF_MAX_OFFICIAL_DELAY_DAYS,
+                                    DEFAULT_MAX_OFFICIAL_DELAY_DAYS,
+                                )
+                            ),
+                        )
+                    ),
+                    time.min,
+                ),
+            )
+        except Exception:  # eData's optional adapter must not stop live comparisons.
+            _LOGGER.warning(
+                "Unable to read eData daily history; using official sensor",
+                exc_info=True,
+            )
+            adapter_state, rows = EDataAdapterState.HISTORY_UNAVAILABLE, ()
         if adapter_state is EDataAdapterState.HISTORY_UNAVAILABLE:
             _LOGGER.debug(
                 "eData history is unavailable; using the configured complete "
@@ -798,7 +883,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 end_utc,
                 {entity_id},
                 "hour",
-                None,
+                {"energy": "kWh"},
                 {"change"},
             )
         except Exception:
@@ -858,9 +943,9 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
             else:
                 zero_streak = 0
 
-        state = self.hass.states.get(entity_id)
-        unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) if state else None
-        local_value = _energy_to_kwh(sum(numeric_changes), unit)
+        # Recorder owns the historical unit. Request kWh explicitly above instead
+        # of interpreting its result using the sensor's possibly changed live unit.
+        local_value = _energy_to_kwh(sum(numeric_changes), "kWh")
         return LocalDayReading(
             entity_id,
             role,
@@ -891,6 +976,9 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                 official_hours=record.official_hours,
                 expected_official_hours=record.expected_official_hours,
             )
+            # Threshold reclassification does not recompute historical Recorder data.
+            # Keep its measurement version so backfill can upgrade older readings.
+            comparison.algorithm_version = record.algorithm_version
             comparison.local_source_entity = record.local_source_entity
             comparison.local_source_name = record.local_source_name
             comparison.local_source_role = record.local_source_role
@@ -1085,7 +1173,7 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                                 record.critical_percent,
                                 record.min_coverage_percent,
                                 record.local_source_entity,
-                                record.local_source_name,
+                                csv_safe_text(record.local_source_name),
                                 record.local_source_role,
                                 record.local_selection_reason,
                                 record.fallback_used,
@@ -1096,8 +1184,8 @@ class EnergyConsistencyCoordinator(DataUpdateCoordinator[CoordinatorSnapshot]):
                                 record.backup_coverage_percent,
                                 record.primary_zero_streak_hours,
                                 record.backup_zero_streak_hours,
-                                record.primary_local_name,
-                                record.backup_local_name,
+                                csv_safe_text(record.primary_local_name),
+                                csv_safe_text(record.backup_local_name),
                                 record.primary_local_enabled,
                                 record.backup_local_enabled,
                                 record.primary_calibration_factor,

@@ -31,6 +31,10 @@ TO_REDACT_ENTRY = {
 TO_REDACT_RECORD = {
     "official_kwh",
     "local_kwh",
+    "difference_kwh",
+    "difference_percent",
+    "local_sources_difference_kwh",
+    "local_sources_difference_percent",
     "local_source_entity",
     "primary_local_kwh",
     "backup_local_kwh",
@@ -43,6 +47,10 @@ TO_REDACT_RECORD = {
 TO_REDACT_SNAPSHOT = {
     "official_kwh",
     "local_kwh",
+    "difference_kwh",
+    "difference_percent",
+    "local_sources_difference_kwh",
+    "local_sources_difference_percent",
     "local_source_entity",
     "primary_local_kwh",
     "backup_local_kwh",
@@ -61,7 +69,7 @@ async def async_get_config_entry_diagnostics(
     coordinator = entry.runtime_data
     return {
         "entry": {
-            "title": entry.title,
+            "title": "**REDACTED**",
             "data": async_redact_data(dict(entry.data), TO_REDACT_ENTRY),
             "options": dict(entry.options),
         },

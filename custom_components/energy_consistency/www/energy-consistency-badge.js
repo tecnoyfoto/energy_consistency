@@ -47,7 +47,13 @@ const COPY = {
     localHigher: "El medidor local registra más que la fuente oficial. Comprueba la evolución de las próximas comparaciones y la configuración de ambas fuentes.",
     officialHigher: "La fuente oficial registra más que el medidor local. Comprueba la evolución de las próximas comparaciones y la cobertura del medidor.",
     equal: "Las dos lecturas prácticamente coinciden.",
-    source_unavailable: "Una de las entidades de origen no está disponible.",
+    source_unavailable: "Una de las entidades de origen no está disponible. Comprueba las fuentes indicadas abajo en Ajustes > Dispositivos y servicios; si la integración de origen se ha actualizado, revisa si ha creado una entidad nueva.",
+    sourceStatus: "Estado de las fuentes",
+    official_energy: "Energía oficial",
+    official_date: "Fecha oficial",
+    primary_local_energy: "Contador principal",
+    backup_local_energy: "Contador de respaldo",
+    savedReading: "Las lecturas inferiores corresponden a la última comparación guardada.",
     invalid_official_value: "El valor o la fecha oficial no se pueden interpretar.",
     official_data_too_old: "Los datos oficiales llevan más retraso del permitido.",
     local_sensor_may_be_frozen: "El contador local lleva demasiado tiempo sin cambiar.",
@@ -95,10 +101,16 @@ const COPY = {
     data_issue: "Reliable information is missing from one of the sources. Check the detail below.",
     warning: "Relevant differences have repeated across recent valid comparisons.",
     critical: "Very large differences have repeated for several days.",
-    localHigher: "The local meter reads more than the official source. This is usually less concerning and may be caused by calibration, rounding, or day boundaries.",
+    localHigher: "The local meter reads more than the official source. Watch the next comparisons and check both source configurations.",
     officialHigher: "The official reading is higher than the local meter. Watch the next comparisons and check local meter coverage.",
     equal: "Both readings are practically identical.",
-    source_unavailable: "One of the source entities is unavailable.",
+    source_unavailable: "One of the source entities is unavailable. Check the sources below in Settings > Devices & services; if the source integration was updated, check whether it created a replacement entity.",
+    sourceStatus: "Source states",
+    official_energy: "Official energy",
+    official_date: "Official date",
+    primary_local_energy: "Primary meter",
+    backup_local_energy: "Backup meter",
+    savedReading: "The readings below belong to the last saved comparison.",
     invalid_official_value: "The official value or date cannot be interpreted.",
     official_data_too_old: "Official data is older than the configured limit.",
     local_sensor_may_be_frozen: "The local meter has not changed for too long.",
@@ -259,7 +271,7 @@ class EnergyConsistencyBadge extends HTMLElement {
     const selected = recentComparisons.find((row) => row.date === this._selectedComparisonDate);
     if (this._selectedComparisonDate && !selected) this._selectedComparisonDate = null;
     const detail = selected || attrs;
-    const reasonKey = detail.local_sources_disagree
+    const reasonKey = detail.local_sources_disagree && (selected || stateObj?.state === "warning")
       ? "local_sources_disagree"
       : String(detail.reason || "").split(":")[0];
     const status = selected?.local_sources_disagree && selected.status !== "critical"
@@ -279,6 +291,9 @@ class EnergyConsistencyBadge extends HTMLElement {
     if (!selected && attrs.using_cached_result) {
       statusMessage += ` ${text.cachedResult.replace("{date}", detail.comparison_date || text.noData)}`;
     }
+    if (!selected && stateObj?.state === "data_issue" && attrs.comparison_date) {
+      statusMessage += ` ${text.savedReading}`;
+    }
     dialog.querySelector(".status").textContent = statusMessage;
 
     const metrics = [
@@ -288,6 +303,17 @@ class EnergyConsistencyBadge extends HTMLElement {
       [text.difference, `${difference > 0 ? "+" : ""}${number(detail.difference_kwh)} kWh (${difference > 0 ? "+" : ""}${number(detail.difference_percent, 1)} %)`],
       [text.coverage, `${number(detail.coverage_percent, 1)} %`],
     ];
+    if (!selected && stateObj?.state === "data_issue") {
+      const failedRoles = String(attrs.reason || "").split(":").slice(1).join(":").split(",").map((role) => role.trim());
+      for (const [role, entity] of Object.entries(attrs.source_entities || {})) {
+        const sourceState = attrs.source_states?.[role];
+        if (failedRoles.includes(role) || sourceState === "unavailable" || sourceState === "unknown") {
+          if (role === "backup_local_energy" && attrs.backup_local_enabled === false) continue;
+          if (role === "primary_local_energy" && attrs.primary_local_enabled === false) continue;
+          metrics.push([text[role] || text.sourceStatus, `${entity}: ${sourceState || text.noData}`]);
+        }
+      }
+    }
     if (detail.local_source_role || detail.local_source_name) {
       metrics.push([
         text.localSource,

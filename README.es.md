@@ -12,7 +12,7 @@ la causa de una diferencia.
 
 ## Estado actual
 
-La versión `0.9.0` es la versión preliminar pública actual. Ya funciona en una
+La versión `0.9.1` es la versión preliminar pública actual. Ya funciona en una
 instalación real de Home Assistant, dispone de pruebas automáticas, conserva el
 historial verificado después de los reinicios y rechaza deliberadamente los
 días parciales.
@@ -64,7 +64,7 @@ La fuente oficial debe proporcionar información suficiente para demostrar que
 el día está completo. Actualmente se admite:
 
 - el consumo diario completo de eData;
-- otro sensor oficial que exponga `last_registered_day_hours`.
+- otro sensor oficial que exponga `last_registered_day_hours` o `last_day_delta_h`.
 
 Energy Consistency nunca presupone que un valor diario cualquiera esté
 completo.
@@ -260,3 +260,26 @@ Consulta [CHANGELOG.es.md](CHANGELOG.es.md).
 ## Licencia
 
 [MIT](LICENSE)
+
+
+## Compatibilidad y actualizaciones (0.9.1)
+
+La fuente oficial es configurable: no se incluyen entidades, credenciales ni datos de una vivienda concreta. eData es opcional. La compatibilidad moderna se ha comprobado con eData 2026.10.4; se conserva el adaptador antiguo y un respaldo seguro mediante el sensor del último día completo. El acceso al historial de eData es opcional y depende de su API interna, por lo que no se garantiza compatibilidad con versiones futuras.
+
+Al detectar el cambio de identidad de eData de `last_registered_day_kwh` a `last_day_kwh`, la integración migra automáticamente a la nueva entidad del **mismo suministro y entrada de eData**, aunque Home Assistant le asigne `_2`. Esa migración conserva las comparaciones; no selecciona otro suministro por similitud de nombre. Un cambio manual a otra fuente oficial sigue iniciando un historial nuevo.
+
+Las estadísticas locales se solicitan a Recorder en kWh. Cambiar la unidad visible del sensor entre Wh, kWh y MWh no altera la interpretación del historial. Recorder debe estar habilitado e incluir los contadores seleccionados. Una hora presente en Recorder no demuestra que hubiera muestras continuas durante toda esa hora.
+
+La recuperación automática revisa los últimos 14 días, o el retraso oficial máximo configurado si es mayor. Solo guarda días completos con datos locales disponibles. El historial propio conserva hasta 730 comparaciones. Los cambios de inclusión, prioridad y calibración se aplican a las nuevas comparaciones; las ya verificadas mantienen el contador y la calibración utilizados en su momento, salvo que una corrección oficial o una nueva versión del algoritmo de medida requiera recalcular un día disponible.
+
+Para actualizar desde HACS, instala la nueva versión y reinicia Home Assistant. No elimines y vuelvas a añadir la integración: eliminarla borra su historial e informes. Si la insignia conserva el aspecto anterior, recarga el navegador; su recurso lleva la versión para renovar la caché. El proyecto se instala como repositorio personalizado de HACS; eso no implica que forme parte del catálogo predeterminado de HACS.
+
+## Diagnóstico y soporte seguro
+
+Cuando una fuente no está disponible, la insignia identifica la entidad y su estado. Las lecturas anteriores siguen visibles con una indicación de que pertenecen a la última comparación guardada. Un contador de respaldo excluido no se presenta como una fuente que haya que reparar.
+
+Los diagnósticos descargables ocultan el título personalizado, los nombres, los identificadores de entidad, los consumos y las diferencias absolutas y relativas que permitirían reconstruirlos. Mantienen fechas, estados, cobertura y umbrales para facilitar el soporte. Los CSV son exportaciones privadas: contienen consumos y nombres; no los adjuntes a una incidencia pública sin revisarlos. Los nombres que una hoja de cálculo podría interpretar como fórmulas se exportan como texto.
+
+Antes de pedir ayuda, comprueba la disponibilidad de las fuentes, que Recorder incluye los contadores y que eData ha publicado todas las horas del día. Incluye las versiones de Home Assistant, Energy Consistency y la fuente oficial, el motivo del aviso y, si hace falta, los diagnósticos revisados. No publiques tokens, contraseñas, configuraciones completas ni capturas con datos personales.
+
+La fecha oficial debe identificar el mismo día natural y zona horaria que Home Assistant. Si la fuente expresa otra fecha, normalízala mediante un sensor de origen o plantilla antes de seleccionarla. Consulta [la auditoría pública](AUDIT.md) para conocer las comprobaciones y sus límites.

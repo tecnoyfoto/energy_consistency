@@ -6,7 +6,7 @@ from datetime import timedelta
 
 DOMAIN = "energy_consistency"
 PLATFORMS = ["sensor", "switch"]
-FRONTEND_VERSION = "0.9.0"
+FRONTEND_VERSION = "0.9.1"
 
 CONF_OFFICIAL_ENERGY_ENTITY = "official_energy_entity"
 CONF_OFFICIAL_DATE_ENTITY = "official_date_entity"

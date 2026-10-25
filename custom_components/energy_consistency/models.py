@@ -17,7 +17,7 @@ _VALID_DAY_REASONS = {
     "local_sensor_may_be_frozen",
     "local_sources_disagree",
 }
-COMPARISON_ALGORITHM_VERSION = 3
+COMPARISON_ALGORITHM_VERSION = 4
 
 
 @dataclass(slots=True)

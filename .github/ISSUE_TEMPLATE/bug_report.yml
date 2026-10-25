@@ -1,0 +1,30 @@
+name: Bug report
+description: Report an Energy Consistency problem
+body:
+  - type: markdown
+    attributes:
+      value: "Do not share tokens, passwords, complete configuration or raw CSV reports. Review diagnostics and screenshots before attaching them."
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Home Assistant, Energy Consistency and the official source integration
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and steps to reproduce
+      description: Include expected behaviour and the badge reason. Use generic entity names.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source availability and completeness
+      description: Are the official and local sources available? Is the official day complete? Is Recorder recording the local meters?
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Reviewed diagnostics or relevant error
+      description: Attach only the integration diagnostics or relevant redacted log excerpt. Never attach your whole configuration.

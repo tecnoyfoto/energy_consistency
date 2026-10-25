@@ -2,6 +2,18 @@
 
 All notable changes to Energy Consistency are documented in this file.
 
+## [0.9.1] - 2026-10-25
+
+- Support eData 2026.10.4: same-supply daily-sensor migration, legacy/modern complete-hour attributes and modern daily-history backfill.
+- Preserve verified comparisons during automatic eData identity migration.
+- Request Recorder energy statistics explicitly in kWh and refresh available older comparisons without marking threshold-only reclassification as a measurement upgrade.
+- Clean up source listeners on failed setup and commit local-source options atomically to avoid duplicate reloads.
+- Keep reconfiguration available during temporary official-source outages and translate validation errors in options.
+- Identify unavailable sources and distinguish current failures from saved readings in the badge.
+- Redact custom titles and reconstructible energy differences in downloaded diagnostics; export formula-like CSV names as text.
+- Add migration, configuration, units, privacy, badge and public-packaging regression tests.
+- Validate versions/translations and document packaging, safe support and upgrades.
+
 ## [0.9.0] - 2026-09-20
 
 ### Added

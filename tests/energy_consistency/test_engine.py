@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, tzinfo
-from pathlib import Path
 import sys
 import types
+from datetime import date, datetime, timedelta, tzinfo
+from pathlib import Path
 
 import pytest
 

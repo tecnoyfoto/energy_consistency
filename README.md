@@ -68,29 +68,37 @@ Energy Consistency never assumes that an arbitrary daily value is complete.
 
 ## Installation
 
-### HACS custom repository
+### Manual installation from GitHub (direct download)
 
-1. Open **HACS > Integrations**.
-2. Open the three-dot menu and choose **Custom repositories**.
-3. Add `https://github.com/tecnoyfoto/energy_consistency` as an
-   **Integration**.
-4. Install **Energy Consistency**.
-5. Restart Home Assistant.
-6. Open **Settings > Devices & services > Add integration** and search for
-   **Energy Consistency**.
-
-### Manual installation
-
-Copy this directory into your Home Assistant configuration:
+1. Download [energy_consistency-0.9.1.zip](https://github.com/tecnoyfoto/energy_consistency/releases/download/0.9.1/energy_consistency-0.9.1.zip) from [release 0.9.1](https://github.com/tecnoyfoto/energy_consistency/releases/tag/0.9.1).
+2. Extract the ZIP on your computer. It contains `custom_components/energy_consistency`.
+3. Copy **only the `energy_consistency` folder** into `custom_components` in your Home Assistant configuration directory. Create `custom_components` if needed. The result must be:
 
 ```text
 config/
   custom_components/
     energy_consistency/
+      __init__.py
+      manifest.json
+      ...
 ```
 
-Restart Home Assistant and add the integration from **Settings > Devices &
-services**.
+4. Restart Home Assistant.
+5. Open **Settings > Devices & services > Add integration**, search for **Energy Consistency**, and select your sources.
+
+**Upgrading an existing installation:** replace the files under `custom_components/energy_consistency` with the new version and restart. Do not remove the integration from the UI or delete `.storage` or reports; this preserves configuration and history. Do not nest the archive's outer folder inside `energy_consistency`, or replace your entire `custom_components` folder.
+
+Energy Consistency does not require credentials or tokens. It uses entities already configured in Home Assistant. Install and configure eData first if you want to use it as the official source.
+
+### Optional: HACS custom repository
+
+You do not need to wait for inclusion in HACS's default catalogue. Add the repository manually:
+
+1. Open **HACS > Integrations**.
+2. Open the three-dot menu and choose **Custom repositories**.
+3. Add `https://github.com/tecnoyfoto/energy_consistency` as an **Integration**.
+4. Install **Energy Consistency** and restart Home Assistant.
+5. Add the integration from **Settings > Devices & services**.
 
 ## Configuration
 
